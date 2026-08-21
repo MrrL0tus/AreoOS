@@ -59,6 +59,7 @@ export default async function AppLayout({
 
         <div className="nav-section">Système</div>
         <NavItem href="/audit" icon="⊙" label="Journal d'audit" />
+        <NavItem href="/settings/mfa" icon="⚿" label="Sécurité" />
 
         <div className="sidebar-footer">
           <div className="user-pill">

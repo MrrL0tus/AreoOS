@@ -17,9 +17,15 @@
 
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { withTenant } from '../src/lib/db';
+import { withTenant, prisma as appPrisma } from '../src/lib/db';
 
-const prisma = new PrismaClient();
+// Préparation/nettoyage : opération système qui doit contourner le RLS
+// pour créer un tenant avant qu'un contexte tenant n'existe (cf. .env
+// ADMIN_DATABASE_URL). Les assertions du test, elles, passent par
+// withTenant() / appPrisma ci-dessous, connectés en rôle applicatif.
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.ADMIN_DATABASE_URL } },
+});
 
 // ─── Affichage ────────────────────────────────────────────────────
 const GREEN = '\x1b[32m';
@@ -229,7 +235,10 @@ async function main() {
   // ─────────────────────────────────────────────────────────────
   console.log(`\n${BOLD}Test 6 — Requête sans contexte tenant${RESET}`);
 
-  const noContext = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+  // Utilise le client applicatif (rôle non-superuser) : la connexion
+  // admin utilisée pour la préparation ci-dessus contourne le RLS et
+  // fausserait ce test.
+  const noContext = await appPrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
     `SELECT COUNT(*)::bigint as count FROM aircraft WHERE msn LIKE 'TEST-%'`
   );
 

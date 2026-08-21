@@ -61,11 +61,11 @@ export default async function ContractsPage() {
   );
 
   const activeCount = contracts.filter(
-    (c) => c.status === 'ACTIVE' || c.status === 'EXPIRING'
+    (c) => c.status === 'ACTIVE'
   ).length;
 
   const totalMonthlyRent = contracts
-    .filter((c) => c.status === 'ACTIVE' || c.status === 'EXPIRING')
+    .filter((c) => c.status === 'ACTIVE')
     .reduce((s, c) => s + Number(c.monthlyRent), 0);
 
   return (
@@ -116,7 +116,7 @@ export default async function ContractsPage() {
                     tone: 'gray',
                   };
                   const days = daysUntil(c.endDate);
-                  const isLive = c.status === 'ACTIVE' || c.status === 'EXPIRING';
+                  const isLive = c.status === 'ACTIVE';
 
                   return (
                     <tr key={c.id}>

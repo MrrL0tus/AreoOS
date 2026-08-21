@@ -105,7 +105,7 @@ export default async function AssetDetailPage({
 
   const status = assetStatus(aircraft.status);
   const activeContract = aircraft.contracts.find(
-    (c) => c.status === 'ACTIVE' || c.status === 'EXPIRING'
+    (c) => c.status === 'ACTIVE'
   );
   const latestVal = aircraft.valuations[0];
   const quality = QUALITY_LABELS[aircraft.hoursQuality] ?? QUALITY_LABELS.DECLARED;

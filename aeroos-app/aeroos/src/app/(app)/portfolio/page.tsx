@@ -23,7 +23,7 @@ export default async function DashboardPage() {
         select: { id: true, status: true, msn: true },
       }),
       tx.leaseContract.findMany({
-        where: { deletedAt: null, status: { in: ['ACTIVE', 'EXPIRING'] } },
+        where: { deletedAt: null, status: 'ACTIVE' },
         select: {
           id: true,
           reference: true,

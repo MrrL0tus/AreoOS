@@ -16,7 +16,7 @@ tâches marquées ⚡ peuvent être faites en parallèle.
 > Objectif : le projet démarre, les écrans s'affichent, les tests passent.
 > **Rien d'autre ne doit être commencé avant que cette phase soit terminée.**
 
-### [ ] T0.1 — Faire passer le typecheck
+### [x] T0.1 — Faire passer le typecheck
 
 **Contexte.** Le projet n'a jamais été compilé avec un client Prisma
 généré. Des erreurs de types sont attendues au premier passage.
@@ -42,7 +42,7 @@ généré. Des erreurs de types sont attendues au premier passage.
 
 ---
 
-### [ ] T0.2 — Initialiser la base et charger le seed
+### [x] T0.2 — Initialiser la base et charger le seed
 
 **Étapes.**
 1. `cp .env.example .env`
@@ -59,7 +59,7 @@ généré. Des erreurs de types sont attendues au premier passage.
 
 ---
 
-### [ ] T0.3 — Vérifier l'isolation multi-tenant
+### [x] T0.3 — Vérifier l'isolation multi-tenant
 
 **Contexte.** C'est le test de sécurité le plus important du projet. S'il
 échoue, tout le reste est compromis.
@@ -75,7 +75,7 @@ généré. Des erreurs de types sont attendues au premier passage.
 
 ---
 
-### [ ] T0.4 — Valider les écrans
+### [x] T0.4 — Valider les écrans
 
 **Étapes.**
 1. `npm run dev`
@@ -99,7 +99,7 @@ généré. Des erreurs de types sont attendues au premier passage.
 > Objectif : rendre la plateforme présentable à un client sans mentir sur
 > la sécurité. Le MFA est une exigence documentée du cahier de conformité.
 
-### [ ] T1.1 — MFA par TOTP ⚡
+### [x] T1.1 — MFA par TOTP ⚡
 
 **Contexte.** Les champs `mfaEnabled` et `mfaSecret` existent déjà sur
 `User`. Le cahier de conformité (§2.2) impose le MFA obligatoire avant
@@ -140,7 +140,7 @@ l'ouverture des accès beta.
 
 ---
 
-### [ ] T1.2 — Limitation de débit sur la connexion ⚡
+### [x] T1.2 — Limitation de débit sur la connexion ⚡
 
 **Contexte.** Sans limite, l'authentification est vulnérable au bruteforce.
 

@@ -208,6 +208,7 @@ model User {
 
   mfaEnabled Boolean @default(false) // D-sécurité : obligatoire en prod
   mfaSecret  String?
+  mfaRecoveryCodes String[] @default([])
 
   lastLoginAt DateTime?
   isActive    Boolean   @default(true)

@@ -43,9 +43,12 @@ export function num(value: number | null | undefined): string {
   return new Intl.NumberFormat('fr-FR').format(value);
 }
 
+/**
+ * Formate une fraction (0.75) en pourcentage affiché ("75.0 %").
+ */
 export function pct(value: number | null | undefined, digits = 1): string {
   if (value == null) return '—';
-  return `${value.toFixed(digits)} %`;
+  return `${(value * 100).toFixed(digits)} %`;
 }
 
 export function date(d: Date | string | null | undefined): string {

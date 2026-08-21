@@ -237,13 +237,13 @@ td.num, th.num { text-align: right; font-family: var(--font-mono); }
   font-weight: 500; cursor: pointer; border: none;
   font-family: var(--font-sans); transition: background 0.12s;
 }
-.btn.primary { background: var(--blue); color: #fff; }
-.btn.primary:hover { background: #2563EB; }
-.btn.ghost {
+.btn.primary, .btn-primary { background: var(--blue); color: #fff; }
+.btn.primary:hover, .btn-primary:hover { background: #2563EB; }
+.btn.ghost, .btn-ghost {
   background: var(--surface-2); color: var(--text-2);
   border: 1px solid var(--border-2);
 }
-.btn.ghost:hover { background: var(--surface-3); color: var(--text); }
+.btn.ghost:hover, .btn-ghost:hover { background: var(--surface-3); color: var(--text); }
 
 /* ─── Pill métrique (topbar) ────────────────────────────────── */
 .metric-pill {

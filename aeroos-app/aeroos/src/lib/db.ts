@@ -73,8 +73,31 @@ export async function withTenant<T>(
 }
 
 /**
+ * Client connecté avec le rôle Postgres BYPASSRLS (SYSTEM_DATABASE_URL).
+ * Ne JAMAIS exporter ni utiliser directement — seul asSystem() y accède,
+ * pour garder une trace de chaque contournement du RLS.
+ */
+const globalForSystemPrisma = globalThis as unknown as {
+  systemPrisma: PrismaClient | undefined;
+};
+
+function getSystemPrisma(): PrismaClient {
+  if (!globalForSystemPrisma.systemPrisma) {
+    globalForSystemPrisma.systemPrisma = new PrismaClient({
+      datasources: { db: { url: process.env.SYSTEM_DATABASE_URL } },
+    });
+  }
+  return globalForSystemPrisma.systemPrisma;
+}
+
+/**
  * Version admin — contourne le RLS pour les opérations système
- * (création de tenant, migrations, tâches de fond multi-tenant).
+ * (création de tenant, migrations, tâches de fond multi-tenant, recherche
+ * d'un utilisateur par e-mail avant de connaître son tenant lors du login).
+ *
+ * Contrairement à withTenant(), la protection ne vient pas de l'application
+ * mais est structurelle : la connexion utilise un rôle Postgres BYPASSRLS
+ * dédié (SYSTEM_DATABASE_URL), distinct du rôle applicatif normal.
  *
  * À utiliser avec parcimonie et TOUJOURS avec un log d'audit.
  */
@@ -88,7 +111,7 @@ export async function asSystem<T>(
     );
   }
   console.warn(`[SYSTEM ACCESS] ${reason}`);
-  return fn(prisma);
+  return fn(getSystemPrisma());
 }
 
 // ─────────────────────────────────────────────────────────────────

@@ -17,7 +17,11 @@ import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { calculateValuation } from '../src/lib/valuation';
 
-const prisma = new PrismaClient();
+// Amorçage : opération système qui doit contourner le RLS pour créer
+// le tenant avant qu'un contexte tenant n'existe (cf. .env ADMIN_DATABASE_URL).
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.ADMIN_DATABASE_URL } },
+});
 
 // ─────────────────────────────────────────────────────────────────
 // Helpers

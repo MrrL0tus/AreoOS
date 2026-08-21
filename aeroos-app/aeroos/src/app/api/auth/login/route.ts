@@ -29,6 +29,25 @@ export async function POST(request: Request) {
     userAgent: request.headers.get('user-agent') ?? undefined,
   });
 
+  if (result.rateLimited) {
+    return NextResponse.json(
+      { error: result.error },
+      {
+        status: 429,
+        headers: result.retryAfterSeconds
+          ? { 'Retry-After': String(result.retryAfterSeconds) }
+          : undefined,
+      }
+    );
+  }
+
+  if (result.mfaRequired) {
+    return NextResponse.json({
+      mfaRequired: true,
+      challengeToken: result.challengeToken,
+    });
+  }
+
   if (!result.success) {
     // Statut et message volontairement génériques — cf. lib/auth.ts
     return NextResponse.json({ error: result.error }, { status: 401 });

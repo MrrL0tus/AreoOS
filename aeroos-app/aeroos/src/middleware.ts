@@ -12,7 +12,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+// /api/auth/mfa/verify : accessible sans cookie de session, car c'est
+// justement l'étape qui authentifie l'utilisateur lors du challenge MFA
+// (elle vérifie elle-même un challengeToken à courte durée de vie).
+// Le cas "confirmation d'activation" du même endpoint vérifie sa propre
+// session via getSession() côté handler.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/mfa/verify'];
 const COOKIE_NAME = 'aeroos_session';
 
 export function middleware(request: NextRequest) {

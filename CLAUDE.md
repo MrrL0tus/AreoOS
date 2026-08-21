@@ -188,6 +188,7 @@ fictive. Ne jamais y mettre de données réelles de clients.
 ## Où trouver les décisions déjà prises
 
 Le dossier de conception (hors repo) contient :
+
 - Document investisseur — vision, marché, modèle économique
 - Plan d'exécution 18 mois — roadmap, jalons, recrutement
 - Cahier de conformité — RGPD, sécurité, aviation, sanctions

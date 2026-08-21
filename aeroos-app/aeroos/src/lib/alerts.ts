@@ -211,7 +211,7 @@ async function checkInsuranceExpiry(
 
   return aircraft
     .filter((a) => a.insuranceExpiryDate)
-    .map((a) => {
+    .map((a): AlertCandidate | null => {
       const daysLeft = daysBetween(now, a.insuranceExpiryDate!);
       const threshold = rules.insuranceAlertDays
         .filter((d) => daysLeft <= d)

@@ -38,7 +38,7 @@ export default async function AssetsPage() {
           select: { model: true, position: true },
         },
         contracts: {
-          where: { deletedAt: null, status: { in: ['ACTIVE', 'EXPIRING'] } },
+          where: { deletedAt: null, status: 'ACTIVE' },
           select: { endDate: true },
           take: 1,
         },

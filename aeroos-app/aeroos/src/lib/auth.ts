@@ -17,7 +17,9 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
-import { prisma, audit } from './db';
+import { withTenant, audit, asSystem } from './db';
+import { verifyToken as verifyTotpToken, matchRecoveryCode } from './mfa';
+import { checkLoginRateLimit, recordFailedLogin, resetLoginRateLimit } from './ratelimit';
 import type { UserRole } from '@prisma/client';
 
 const COOKIE_NAME = 'aeroos_session';
@@ -51,6 +53,17 @@ export interface LoginResult {
   success: boolean;
   error?: string;
   session?: SessionPayload;
+  mfaRequired?: boolean;
+  challengeToken?: string;
+  rateLimited?: boolean;
+  retryAfterSeconds?: number;
+}
+
+interface MfaChallengePayload {
+  userId: string;
+  tenantId: string;
+  purpose: 'mfa_challenge';
+  [key: string]: unknown;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -62,19 +75,65 @@ export async function login(
   password: string,
   meta: { ipAddress?: string; userAgent?: string } = {}
 ): Promise<LoginResult> {
-  // Recherche hors RLS : on ne connaît pas encore le tenant
-  const user = await prisma.user.findFirst({
-    where: { email: email.toLowerCase().trim(), isActive: true, deletedAt: null },
-    include: { tenant: { select: { id: true, name: true, isActive: true } } },
-  });
+  const normalizedEmail = email.toLowerCase().trim();
+  const ip = meta.ipAddress ?? 'unknown';
 
   // Message d'erreur identique dans tous les cas :
   // ne jamais révéler si un compte existe
   const GENERIC_ERROR = 'Identifiants invalides';
 
+  // Vérifié avant toute recherche base : le comptage des échecs ne doit
+  // pas révéler l'existence d'un compte, donc il s'applique de la même
+  // façon qu'un e-mail corresponde ou non à un utilisateur réel.
+  const rateLimit = checkLoginRateLimit(normalizedEmail, ip);
+  if (rateLimit.blocked) {
+    // Audit uniquement si on peut résoudre un tenant pour cet e-mail —
+    // comme pour le cas "compte inexistant" ci-dessous, on ne peut pas
+    // écrire d'entrée d'audit sans tenantId.
+    const maybeUser = await asSystem(
+      `login: vérification du rate-limit pour ${normalizedEmail}`,
+      (client) =>
+        client.user.findFirst({
+          where: { email: normalizedEmail, deletedAt: null },
+          select: { id: true, tenantId: true, email: true },
+        })
+    );
+    if (maybeUser) {
+      await audit({
+        tenantId: maybeUser.tenantId,
+        userId: maybeUser.id,
+        userEmail: maybeUser.email,
+        action: 'LOGIN',
+        resourceType: 'User',
+        resourceId: maybeUser.id,
+        result: 'DENIED',
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
+        metadata: { reason: 'rate_limited' },
+      });
+    }
+    return {
+      success: false,
+      rateLimited: true,
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
+      error: 'Trop de tentatives — réessayez plus tard',
+    };
+  }
+
+  // Recherche hors RLS : on ne connaît pas encore le tenant
+  const user = await asSystem(
+    `login: recherche de l'utilisateur ${normalizedEmail} avant connaissance du tenant`,
+    (client) =>
+      client.user.findFirst({
+        where: { email: normalizedEmail, isActive: true, deletedAt: null },
+        include: { tenant: { select: { id: true, name: true, isActive: true } } },
+      })
+  );
+
   if (!user) {
     // Hash factice pour égaliser le temps de réponse (anti-timing attack)
     await bcrypt.compare(password, '$2a$10$invalidinvalidinvalidinvalidinvalidinv');
+    recordFailedLogin(normalizedEmail, ip);
     return { success: false, error: GENERIC_ERROR };
   }
 
@@ -85,6 +144,7 @@ export async function login(
   const valid = await bcrypt.compare(password, user.passwordHash);
 
   if (!valid) {
+    recordFailedLogin(normalizedEmail, ip);
     await audit({
       tenantId: user.tenantId,
       userId: user.id,
@@ -100,6 +160,27 @@ export async function login(
     return { success: false, error: GENERIC_ERROR };
   }
 
+  // Mot de passe valide : la tentative de force brute est résolue, on
+  // remet le compteur à zéro même si le MFA reste à valider.
+  resetLoginRateLimit(normalizedEmail, ip);
+
+  // Mot de passe valide : si le MFA est actif, on ne crée pas encore la
+  // session — un second facteur est requis (cf. completeMfaLogin ci-dessous).
+  if (user.mfaEnabled) {
+    const challengeToken = await new SignJWT({
+      userId: user.id,
+      tenantId: user.tenantId,
+      purpose: 'mfa_challenge',
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .setIssuer('aeroos')
+      .sign(getSecret());
+
+    return { success: false, mfaRequired: true, challengeToken };
+  }
+
   const session: SessionPayload = {
     userId: user.id,
     tenantId: user.tenantId,
@@ -111,10 +192,12 @@ export async function login(
 
   await createSessionCookie(session);
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date() },
-  });
+  await withTenant(user.tenantId, (tx) =>
+    tx.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    })
+  );
 
   await audit({
     tenantId: user.tenantId,
@@ -126,6 +209,107 @@ export async function login(
     result: 'SUCCESS',
     ipAddress: meta.ipAddress,
     userAgent: meta.userAgent,
+  });
+
+  return { success: true, session };
+}
+
+/**
+ * Deuxième étape de la connexion lorsque le MFA est actif : valide le
+ * code TOTP (ou un code de récupération à usage unique) et le
+ * challengeToken émis par login(), puis crée la session.
+ */
+export async function completeMfaLogin(
+  challengeToken: string,
+  code: string,
+  meta: { ipAddress?: string; userAgent?: string } = {}
+): Promise<LoginResult> {
+  const GENERIC_ERROR = 'Code invalide';
+
+  let payload: MfaChallengePayload;
+  try {
+    const verified = await jwtVerify(challengeToken, getSecret(), {
+      issuer: 'aeroos',
+    });
+    payload = verified.payload as unknown as MfaChallengePayload;
+    if (payload.purpose !== 'mfa_challenge') throw new Error('mauvais type de jeton');
+  } catch {
+    return { success: false, error: 'Session de connexion expirée, recommencez' };
+  }
+
+  const user = await withTenant(payload.tenantId, (tx) =>
+    tx.user.findFirst({
+      where: { id: payload.userId, isActive: true, deletedAt: null },
+    })
+  );
+
+  if (!user || !user.mfaEnabled || !user.mfaSecret) {
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  let usedRecoveryCode = false;
+  let validCode = verifyTotpToken(user.mfaSecret, code);
+
+  if (!validCode) {
+    const matchIndex = await matchRecoveryCode(code, user.mfaRecoveryCodes);
+    if (matchIndex !== null) {
+      validCode = true;
+      usedRecoveryCode = true;
+      const remaining = user.mfaRecoveryCodes.filter((_, i) => i !== matchIndex);
+      await withTenant(payload.tenantId, (tx) =>
+        tx.user.update({
+          where: { id: user.id },
+          data: { mfaRecoveryCodes: remaining },
+        })
+      );
+    }
+  }
+
+  if (!validCode) {
+    await audit({
+      tenantId: user.tenantId,
+      userId: user.id,
+      userEmail: user.email,
+      action: 'LOGIN',
+      resourceType: 'User',
+      resourceId: user.id,
+      result: 'DENIED',
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+      metadata: { reason: 'invalid_mfa_code' },
+    });
+    return { success: false, error: GENERIC_ERROR };
+  }
+
+  const session: SessionPayload = {
+    userId: user.id,
+    tenantId: user.tenantId,
+    email: user.email,
+    role: user.role,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  };
+
+  await createSessionCookie(session);
+
+  await withTenant(user.tenantId, (tx) =>
+    tx.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    })
+  );
+
+  await audit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    userEmail: user.email,
+    action: 'LOGIN',
+    resourceType: 'User',
+    resourceId: user.id,
+    result: 'SUCCESS',
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+    metadata: usedRecoveryCode ? { recoveryCodeUsed: true } : undefined,
   });
 
   return { success: true, session };

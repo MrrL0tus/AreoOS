@@ -16,10 +16,11 @@
 -- 1. Fonction utilitaire : récupère le tenant du contexte de session
 -- ─────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION current_tenant_id()
-RETURNS uuid AS $$
+RETURNS text AS $$
 BEGIN
   -- current_setting avec true = ne lève pas d'erreur si non défini
-  RETURN NULLIF(current_setting('app.current_tenant', true), '')::uuid;
+  -- tenantId est stocké en text (Prisma String sans @db.Uuid) : pas de cast uuid
+  RETURN NULLIF(current_setting('app.current_tenant', true), '');
 EXCEPTION
   WHEN OTHERS THEN
     RETURN NULL;
@@ -160,10 +161,11 @@ CREATE INDEX IF NOT EXISTS documents_search_idx
 -- Vérification
 -- ─────────────────────────────────────────────────────────────────
 SELECT
-  schemaname,
-  tablename,
-  rowsecurity AS rls_enabled,
-  forcerowsecurity AS rls_forced
-FROM pg_tables
-WHERE schemaname = 'public'
+  n.nspname AS schemaname,
+  c.relname AS tablename,
+  c.relrowsecurity AS rls_enabled,
+  c.relforcerowsecurity AS rls_forced
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relkind = 'r'
 ORDER BY tablename;

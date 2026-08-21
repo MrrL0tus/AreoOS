@@ -9,7 +9,6 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:generate": "prisma generate",
@@ -19,9 +18,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force && npm run db:rls && npm run db:seed",
-
     "setup": "npm run db:up && sleep 4 && npm run db:generate && npm run db:migrate -- --name init && npm run db:rls && npm run db:seed",
-
     "alerts:run": "tsx scripts/run-alerts.ts",
     "valuation:refresh": "tsx scripts/refresh-valuations.ts",
     "test:isolation": "tsx scripts/test-tenant-isolation.ts"
@@ -34,6 +31,8 @@
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",
     "next": "^15.1.0",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^3.23.8"
@@ -41,6 +40,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.16.0",

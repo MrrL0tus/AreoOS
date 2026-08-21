@@ -1,0 +1,772 @@
+// ═══════════════════════════════════════════════════════════════════
+// AeroOS — Schéma de données
+// ═══════════════════════════════════════════════════════════════════
+// Principes appliqués (cf. Cahier de conformité, décisions D1–D5) :
+//  - Toute table métier porte tenantId (isolation RLS au niveau Postgres)
+//  - Soft delete via deletedAt — aucune suppression physique
+//  - Traçabilité : createdAt / updatedAt / createdById sur les entités clés
+//  - dataQuality distingue données certifiées / déclarées / estimées
+// ═══════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────
+
+enum TenantPlan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum StorageRegion {
+  EU_WEST_1
+  AP_SOUTHEAST_1
+  US_EAST_1
+}
+
+enum UserRole {
+  ADMIN // accès complet, gestion utilisateurs
+  MANAGER // lecture/écriture sur tous les modules
+  ANALYST // lecture + création, pas de suppression
+  VIEWER // lecture seule
+}
+
+enum AssetStatus {
+  ON_LEASE // sous contrat actif
+  OFF_LEASE // disponible
+  IN_TRANSITION // entre deux contrats
+  IN_MAINTENANCE // immobilisé
+  STORED // stocké longue durée
+  SOLD // sorti du portefeuille
+  PARTED_OUT // démantelé
+}
+
+enum EnginePosition {
+  LEFT
+  RIGHT
+  TAIL
+  SPARE
+}
+
+enum ContractStatus {
+  DRAFT
+  NEGOTIATION
+  SIGNED
+  ACTIVE
+  REDELIVERY // en cours de restitution
+  TERMINATED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  SCHEDULED // à venir
+  DUE // échue, non reçue
+  RECEIVED
+  PARTIAL
+  OVERDUE
+  WAIVED
+}
+
+enum DocumentCategory {
+  CERTIFICATE // CofA, CofR, Noise, W&B, Form 1
+  CONTRACT // lease, avenants, garanties, assurance
+  MAINTENANCE // C/D-check, ESV, log books, AD/SB
+  INSPECTION // pre-delivery, redelivery, borescope, photos
+  FINANCIAL // bilans, term sheets, KYC
+  OTHER
+}
+
+enum DataQuality {
+  CERTIFIED // issu d'un document validé — utilisable en réglementaire
+  DECLARED // saisi sans document source
+  ESTIMATED // calculé par algorithme ou IA — jamais réglementaire
+}
+
+enum ValuationMethod {
+  ALGORITHMIC // calculé par le Valuation Engine
+  CERTIFIED_APPRAISAL // appraiser accrédité (ISTAT/ASA)
+  MANUAL_OVERRIDE // ajustement manuel justifié
+}
+
+enum AlertType {
+  CONTRACT_EXPIRY
+  PAYMENT_OVERDUE
+  INSURANCE_EXPIRY
+  MAINTENANCE_DUE
+  CERTIFICATE_EXPIRY
+  MR_RESERVE_THRESHOLD
+  CONCENTRATION_BREACH
+  SANCTIONS_FLAG
+  LLP_THRESHOLD
+}
+
+enum AlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum SanctionsStatus {
+  CLEAR
+  FLAGGED // correspondance possible — révision humaine requise
+  BLOCKED // entité sanctionnée — transactions interdites
+  NOT_CHECKED
+}
+
+enum MaintenanceType {
+  A_CHECK
+  C_CHECK
+  D_CHECK
+  ENGINE_SHOP_VISIT
+  APU_OVERHAUL
+  LANDING_GEAR_OVERHAUL
+  AD_COMPLIANCE
+  SB_INCORPORATION
+  OTHER
+}
+
+enum MaintenanceStatus {
+  PLANNED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  DEFERRED
+  CANCELLED
+}
+
+enum AiExtractionStatus {
+  PENDING // en attente de validation humaine
+  VALIDATED // confirmé par un humain
+  REJECTED
+  PARTIAL // partiellement corrigé
+}
+
+// ─────────────────────────────────────────────────────────────────
+// TENANT & UTILISATEURS
+// ─────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id            String        @id @default(uuid())
+  name          String
+  legalName     String?
+  plan          TenantPlan    @default(STARTER)
+  storageRegion StorageRegion @default(EU_WEST_1) // D2 — immuable après onboarding
+  baseCurrency  String        @default("USD")
+
+  maxAssets     Int           @default(10)
+  maxUsers      Int           @default(3)
+
+  // Règles métier configurables
+  concentrationLimitPct Float @default(30) // alerte si un locataire dépasse ce %
+  contractAlertDays     Int[] @default([180, 90, 30, 7])
+  paymentAlertDays      Int[] @default([3, 7, 15])
+
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users       User[]
+  aircraft    Aircraft[]
+  engines     Engine[]
+  components  Component[]
+  operators   Operator[]
+  contracts   LeaseContract[]
+  documents   Document[]
+  valuations  ValuationRecord[]
+  maintenance MaintenanceTask[]
+  events      AssetEvent[]
+  alerts      Alert[]
+  portfolios  Portfolio[]
+  payments    Payment[]
+  aiJobs      AiExtraction[]
+
+  @@map("tenants")
+}
+
+model User {
+  id       String   @id @default(uuid())
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole @default(VIEWER)
+
+  mfaEnabled Boolean @default(false) // D-sécurité : obligatoire en prod
+  mfaSecret  String?
+
+  lastLoginAt DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  createdEvents AssetEvent[]
+  assignedAlerts Alert[]
+  validatedExtractions AiExtraction[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ASSET INTELLIGENCE
+// ─────────────────────────────────────────────────────────────────
+
+model Aircraft {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // Identité
+  msn          String // Manufacturer Serial Number
+  registration String?
+  manufacturer String // Airbus, Boeing, Embraer...
+  model        String // A320, B737
+  variant      String? // -200, -800, neo
+  yearBuilt    Int
+  deliveryDate DateTime?
+
+  // Utilisation
+  totalHours  Int         @default(0) // FH
+  totalCycles Int         @default(0) // FC
+  hoursQuality DataQuality @default(DECLARED) // D5
+  lastUtilizationUpdate DateTime?
+
+  // Configuration
+  cabinConfig  String? // "174Y" ou "12J/150Y"
+  seatCount    Int?
+  mtowKg       Int? // Max Take-Off Weight
+
+  // Statut
+  status              AssetStatus @default(OFF_LEASE)
+  currentOperatorId   String?
+  currentOperator     Operator?   @relation("CurrentOperator", fields: [currentOperatorId], references: [id])
+
+  // Navigabilité
+  cofaExpiryDate    DateTime? // Certificate of Airworthiness
+  cofrExpiryDate    DateTime? // Certificate of Registration
+  insuranceExpiryDate DateTime?
+  openAdCount       Int       @default(0) // Airworthiness Directives ouvertes
+  openSbCount       Int       @default(0) // Service Bulletins
+
+  portfolioId String?
+  portfolio   Portfolio? @relation(fields: [portfolioId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  engines     Engine[]
+  components  Component[]
+  contracts   LeaseContract[]
+  documents   Document[]
+  valuations  ValuationRecord[]
+  maintenance MaintenanceTask[]
+  events      AssetEvent[]
+  alerts      Alert[]
+
+  @@unique([tenantId, msn])
+  @@index([tenantId, status])
+  @@index([tenantId, currentOperatorId])
+  @@map("aircraft")
+}
+
+model Engine {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  serialNumber String
+  manufacturer String // CFM, Pratt & Whitney, Rolls-Royce
+  model        String // CFM56-5B4, LEAP-1A, PW1100G
+  thrustRating String?
+
+  aircraftId String?
+  aircraft   Aircraft?       @relation(fields: [aircraftId], references: [id])
+  position   EnginePosition?
+
+  totalHours  Int @default(0)
+  totalCycles Int @default(0)
+
+  // Données techniques critiques
+  egtMargin        Float? // marge EGT en °C — indicateur de santé
+  llpCyclesRemaining Int? // Life-Limited Parts — cycles restants
+  llpLimitingPart  String? // pièce la plus contraignante (ex: "HPT Disk")
+  lastShopVisitDate DateTime?
+  nextShopVisitEstimate DateTime?
+  shopVisitCostEstimate Decimal? @db.Decimal(14, 2)
+
+  dataQuality DataQuality @default(DECLARED)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  maintenance MaintenanceTask[]
+
+  @@unique([tenantId, serialNumber])
+  @@index([tenantId, aircraftId])
+  @@map("engines")
+}
+
+model Component {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  type         String // APU, Landing Gear, Propeller, Thrust Reverser
+  partNumber   String
+  serialNumber String
+  manufacturer String?
+
+  aircraftId String?
+  aircraft   Aircraft? @relation(fields: [aircraftId], references: [id])
+
+  installedAt      DateTime?
+  totalHours       Int       @default(0)
+  totalCycles      Int       @default(0)
+  nextOverhaulDue  DateTime?
+  overhaulCostEstimate Decimal? @db.Decimal(14, 2)
+
+  dataQuality DataQuality @default(DECLARED)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([tenantId, serialNumber, partNumber])
+  @@index([tenantId, aircraftId])
+  @@map("components")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CONTREPARTIES
+// ─────────────────────────────────────────────────────────────────
+
+model Operator {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name      String
+  legalName String?
+  iataCode  String?
+  icaoCode  String?
+  country   String
+  region    String?
+
+  // Risque
+  creditRating  String? // AAA, BB+, NR...
+  riskScore     Int? // 0-100, calculé
+  riskUpdatedAt DateTime?
+
+  // Conformité sanctions (cf. Cahier de conformité §5)
+  sanctionsStatus    SanctionsStatus @default(NOT_CHECKED)
+  sanctionsCheckedAt DateTime?
+  sanctionsNotes     String?
+
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  operatedAircraft Aircraft[]      @relation("CurrentOperator")
+  contractsAsLessee LeaseContract[] @relation("Lessee")
+  events           AssetEvent[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, sanctionsStatus])
+  @@map("operators")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// LEASING MANAGEMENT
+// ─────────────────────────────────────────────────────────────────
+
+model LeaseContract {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  reference String // référence interne du contrat
+
+  aircraftId String
+  aircraft   Aircraft @relation(fields: [aircraftId], references: [id])
+
+  lessorName String // le bailleur (souvent le tenant lui-même)
+  lesseeId   String
+  lessee     Operator @relation("Lessee", fields: [lesseeId], references: [id])
+
+  // Dates
+  signedDate   DateTime?
+  startDate    DateTime
+  endDate      DateTime
+  deliveryDate DateTime?
+  redeliveryDate DateTime?
+
+  // Conditions financières
+  currency         String   @default("USD")
+  monthlyRent      Decimal  @db.Decimal(14, 2)
+  securityDeposit  Decimal? @db.Decimal(14, 2)
+  escalationClause String? // "SOFR + 1.85%"
+
+  // Maintenance Reserves (par composant)
+  mrEngineLeft  Decimal? @db.Decimal(12, 2)
+  mrEngineRight Decimal? @db.Decimal(12, 2)
+  mrApu         Decimal? @db.Decimal(12, 2)
+  mrLandingGear Decimal? @db.Decimal(12, 2)
+  mrAirframe    Decimal? @db.Decimal(12, 2)
+
+  // Juridique
+  governingLaw String? // "Irish law", "New York law"
+  jurisdiction String?
+
+  // Clauses
+  hasPurchaseOption   Boolean @default(false)
+  hasExtensionOption  Boolean @default(false)
+  hasEarlyTermination Boolean @default(false)
+  returnConditions    String? // résumé des return conditions
+
+  status  ContractStatus @default(DRAFT)
+  version Int            @default(1) // avenants = nouvelle version
+
+  // Traçabilité IA
+  extractedByAi Boolean @default(false)
+  aiExtractionId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  payments  Payment[]
+  documents Document[]
+  alerts    Alert[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@index([tenantId, endDate])
+  @@index([tenantId, aircraftId])
+  @@map("lease_contracts")
+}
+
+model Payment {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  contractId String
+  contract   LeaseContract @relation(fields: [contractId], references: [id])
+
+  periodLabel String // "2025-07"
+  dueDate     DateTime
+  amountDue   Decimal  @db.Decimal(14, 2)
+  currency    String   @default("USD")
+
+  receivedDate   DateTime?
+  amountReceived Decimal?  @db.Decimal(14, 2)
+
+  status PaymentStatus @default(SCHEDULED)
+  notes  String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, contractId])
+  @@index([tenantId, status, dueDate])
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// DOCUMENT VAULT
+// ─────────────────────────────────────────────────────────────────
+
+model Document {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  title    String
+  filename String
+  category DocumentCategory
+  subcategory String? // "CofA", "Engine Shop Visit", "Lease Agreement"
+
+  aircraftId String?
+  aircraft   Aircraft? @relation(fields: [aircraftId], references: [id])
+
+  contractId String?
+  contract   LeaseContract? @relation(fields: [contractId], references: [id])
+
+  // Stockage (S3-compatible)
+  storageKey String // tenantId/aircraftId/documentId/version
+  mimeType   String
+  sizeBytes  Int
+
+  version     Int       @default(1)
+  issueDate   DateTime?
+  expiryDate  DateTime? // déclenche les alertes
+
+  // Recherche full-text (tsvector côté Postgres)
+  extractedText String? @db.Text
+
+  // IA
+  aiSummary String? @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  extractions AiExtraction[]
+
+  @@index([tenantId, aircraftId])
+  @@index([tenantId, category])
+  @@index([tenantId, expiryDate])
+  @@map("documents")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// VALUATION ENGINE
+// ─────────────────────────────────────────────────────────────────
+
+model ValuationRecord {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  aircraftId String
+  aircraft   Aircraft @relation(fields: [aircraftId], references: [id])
+
+  valuationDate DateTime
+  currency      String   @default("USD")
+
+  baseValue        Decimal  @db.Decimal(14, 2) // BV — conditions normales
+  currentMarketValue Decimal? @db.Decimal(14, 2) // CMV — conditions actuelles
+  residualValue    Decimal? @db.Decimal(14, 2) // RV projetée
+  residualValueDate DateTime? // date de la projection
+
+  method     ValuationMethod @default(ALGORITHMIC)
+  source     String? // "AeroOS Engine v1", "AVITAS", "IBA"
+  isCertified Boolean        @default(false)
+
+  // Paramètres du calcul (audit / reproductibilité)
+  calcInputs Json? // snapshot des inputs au moment du calcul
+  notes      String?
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([tenantId, aircraftId, valuationDate])
+  @@map("valuation_records")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// MAINTENANCE
+// ─────────────────────────────────────────────────────────────────
+
+model MaintenanceTask {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  aircraftId String
+  aircraft   Aircraft @relation(fields: [aircraftId], references: [id])
+
+  engineId String?
+  engine   Engine? @relation(fields: [engineId], references: [id])
+
+  type        MaintenanceType
+  description String?
+
+  // Déclencheurs (calendrier OU heures OU cycles)
+  dueDate   DateTime?
+  dueHours  Int?
+  dueCycles Int?
+
+  estimatedCost Decimal? @db.Decimal(14, 2)
+  actualCost    Decimal? @db.Decimal(14, 2)
+  currency      String   @default("USD")
+
+  mroName      String? // Lufthansa Technik, SR Technics...
+  status       MaintenanceStatus @default(PLANNED)
+  completedAt  DateTime?
+  downtimeDays Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, aircraftId])
+  @@index([tenantId, dueDate, status])
+  @@map("maintenance_tasks")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// HISTORIQUE / TIMELINE
+// ─────────────────────────────────────────────────────────────────
+
+model AssetEvent {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  aircraftId String
+  aircraft   Aircraft @relation(fields: [aircraftId], references: [id])
+
+  eventType   String // DELIVERY, OPERATOR_CHANGE, MAINTENANCE, STORAGE, INCIDENT, SALE
+  eventDate   DateTime
+  title       String
+  description String?
+
+  operatorId String?
+  operator   Operator? @relation(fields: [operatorId], references: [id])
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([tenantId, aircraftId, eventDate])
+  @@map("asset_events")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ALERTES
+// ─────────────────────────────────────────────────────────────────
+
+model Alert {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  type     AlertType
+  severity AlertSeverity @default(MEDIUM)
+  title    String
+  message  String
+
+  aircraftId String?
+  aircraft   Aircraft? @relation(fields: [aircraftId], references: [id])
+
+  contractId String?
+  contract   LeaseContract? @relation(fields: [contractId], references: [id])
+
+  dueDate DateTime? // date de l'échéance concernée
+
+  assignedToId String?
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
+
+  isRead     Boolean   @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, resolvedAt, severity])
+  @@index([tenantId, aircraftId])
+  @@map("alerts")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PORTFOLIO
+// ─────────────────────────────────────────────────────────────────
+
+model Portfolio {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name        String
+  description String?
+  currency    String  @default("USD")
+  ownerName   String?
+
+  targetYieldPct Float?
+  inceptionDate  DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  aircraft Aircraft[]
+
+  @@unique([tenantId, name])
+  @@map("portfolios")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// IA — EXTRACTIONS
+// ─────────────────────────────────────────────────────────────────
+
+model AiExtraction {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+
+  // Traçabilité modèle (exigence conformité §1.1 contexte 3)
+  modelName    String // "claude-sonnet-4-6"
+  modelVersion String?
+  promptVersion String?
+
+  extractedFields Json // { field: { value, confidence, sourcePage } }
+  overallConfidence Float
+
+  status AiExtractionStatus @default(PENDING)
+
+  validatedById String?
+  validatedBy   User?   @relation(fields: [validatedById], references: [id])
+  validatedAt   DateTime?
+  corrections   Json? // champs corrigés par l'humain
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([tenantId, status])
+  @@map("ai_extractions")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// AUDIT LOG (D3 — append-only, jamais modifié ni supprimé)
+// ─────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id       String @id @default(uuid())
+  tenantId String // pas de relation FK — table indépendante
+
+  userId       String?
+  userEmail    String?
+  action       String // CREATE, UPDATE, DELETE, LOGIN, EXPORT, VIEW
+  resourceType String // Aircraft, LeaseContract, Document...
+  resourceId   String?
+
+  ipAddress String?
+  userAgent String?
+  result    String // SUCCESS, DENIED, ERROR
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, resourceType, resourceId])
+  @@map("audit_logs")
+}

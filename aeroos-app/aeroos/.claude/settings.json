@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(npm run lint)",
+      "Bash(npm test)",
+      "Bash(npm install)",
+      "Bash(npm run db:*)",
+      "Bash(npm run alerts:run)",
+      "Bash(npm run valuation:refresh)",
+      "Bash(npm run test:isolation)",
+      "Bash(npx prisma generate)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma studio)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Read(./**)",
+      "Edit(./src/**)",
+      "Edit(./prisma/**)",
+      "Edit(./scripts/**)",
+      "Edit(./TODO.md)",
+      "Write(./src/**)",
+      "Write(./scripts/**)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Edit(./.env)",
+      "Bash(git push:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)"
+    ]
+  }
+}

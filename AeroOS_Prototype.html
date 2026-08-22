@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AeroOS — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #080E1C;
+    --surface:   #0E1629;
+    --surface2:  #162038;
+    --surface3:  #1E2D4A;
+    --border:    rgba(59,130,246,0.12);
+    --border2:   rgba(255,255,255,0.06);
+    --blue:      #3B82F6;
+    --blue-dim:  rgba(59,130,246,0.15);
+    --blue-glow: rgba(59,130,246,0.08);
+    --teal:      #0EA5E9;
+    --green:     #10B981;
+    --amber:     #F59E0B;
+    --red:       #EF4444;
+    --purple:    #8B5CF6;
+    --text:      #E2E8F0;
+    --text2:     #94A3B8;
+    --text3:     #64748B;
+    --mono:      'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    font-size: 13px;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .logo {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo-mark {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #fff;
+  }
+  .logo-mark span { color: var(--blue); }
+  .logo-sub {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .nav-section {
+    padding: 14px 10px 4px;
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 12px;
+    margin: 1px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text2);
+    transition: all 0.15s;
+    font-size: 12.5px;
+    font-weight: 400;
+    position: relative;
+  }
+  .nav-item:hover { background: var(--blue-glow); color: var(--text); }
+  .nav-item.active {
+    background: var(--blue-dim);
+    color: var(--blue);
+    font-weight: 500;
+  }
+  .nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 6px; bottom: 6px;
+    width: 2px;
+    background: var(--blue);
+    border-radius: 0 2px 2px 0;
+    margin-left: 0;
+  }
+  .nav-icon { width: 15px; text-align: center; font-size: 13px; opacity: 0.8; }
+  .nav-badge {
+    margin-left: auto;
+    background: var(--red);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 10px;
+    min-width: 16px;
+    text-align: center;
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .user-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .avatar {
+    width: 26px; height: 26px;
+    background: var(--blue-dim);
+    border: 1px solid var(--blue);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; color: var(--blue);
+    flex-shrink: 0;
+  }
+  .user-name { font-size: 11.5px; font-weight: 500; }
+  .user-role { font-size: 10px; color: var(--text3); }
+
+  /* ── Main ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 22px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .topbar-title { font-size: 14px; font-weight: 600; flex: 1; }
+  .topbar-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+
+  .metric-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 12px;
+  }
+  .metric-pill-label { font-size: 10px; color: var(--text3); }
+  .metric-pill-value { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--blue); }
+
+  .btn {
+    padding: 6px 14px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    font-family: 'Inter', sans-serif;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text2);
+    border: 1px solid var(--border2);
+  }
+  .btn-ghost:hover { background: var(--surface3); color: var(--text); }
+
+  /* ── Content area ── */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 22px;
+  }
+  .content::-webkit-scrollbar { width: 4px; }
+  .content::-webkit-scrollbar-track { background: transparent; }
+  .content::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+
+  /* ── Pages ── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── KPI Grid ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 10px 10px 0 0;
+  }
+  .kpi-card.blue::after { background: var(--blue); }
+  .kpi-card.green::after { background: var(--green); }
+  .kpi-card.amber::after { background: var(--amber); }
+  .kpi-card.red::after { background: var(--red); }
+  .kpi-card.purple::after { background: var(--purple); }
+  .kpi-card.teal::after { background: var(--teal); }
+
+  .kpi-label { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .kpi-value { font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--text); line-height: 1; }
+  .kpi-sub { font-size: 10.5px; color: var(--text3); margin-top: 6px; }
+  .kpi-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+  .kpi-delta.up { background: rgba(16,185,129,0.12); color: var(--green); }
+  .kpi-delta.down { background: rgba(239,68,68,0.12); color: var(--red); }
+  .kpi-delta.warn { background: rgba(245,158,11,0.12); color: var(--amber); }
+
+  /* ── Section headers ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    margin-top: 4px;
+  }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .section-count { font-size: 11px; color: var(--text3); }
+
+  /* ── Table ── */
+  .data-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .data-table table { width: 100%; border-collapse: collapse; }
+  .data-table th {
+    background: var(--surface2);
+    padding: 9px 14px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border2);
+    font-size: 12.5px;
+    color: var(--text);
+    vertical-align: middle;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--blue-glow); }
+  .data-table tr { cursor: pointer; transition: 0.1s; }
+
+  .mono { font-family: var(--mono); }
+  .text2 { color: var(--text2); }
+  .text3 { color: var(--text3); }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 10.5px;
+    font-weight: 500;
+  }
+  .badge-green { background: rgba(16,185,129,0.12); color: var(--green); }
+  .badge-amber { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .badge-red   { background: rgba(239,68,68,0.12);  color: var(--red);   }
+  .badge-blue  { background: var(--blue-dim);        color: var(--blue);  }
+  .badge-gray  { background: rgba(100,116,139,0.12); color: var(--text3); }
+  .badge-purple{ background: rgba(139,92,246,0.12);  color: var(--purple);}
+
+  /* ── Two column layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border2);
+  }
+
+  /* ── Row detail ── */
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border2);
+    font-size: 12.5px;
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-label { color: var(--text3); }
+  .detail-value { color: var(--text); font-weight: 500; text-align: right; }
+
+  /* ── Alert items ── */
+  .alert-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border2);
+  }
+  .alert-item:last-child { border-bottom: none; }
+  .alert-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+  .dot-red { background: var(--red); box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+  .dot-amber { background: var(--amber); }
+  .dot-blue { background: var(--blue); }
+  .alert-text { font-size: 12px; color: var(--text2); flex: 1; line-height: 1.4; }
+  .alert-time { font-size: 10.5px; color: var(--text3); margin-top: 2px; }
+
+  /* ── Cash flow bars ── */
+  .cf-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .cf-label { width: 28px; font-size: 10px; color: var(--text3); flex-shrink: 0; }
+  .cf-bar-wrap { flex: 1; height: 18px; background: var(--surface2); border-radius: 4px; overflow: hidden; position: relative; }
+  .cf-bar { height: 100%; border-radius: 4px; }
+  .cf-bar-revenue { background: linear-gradient(90deg, var(--blue), var(--teal)); }
+  .cf-bar-maint { background: rgba(245,158,11,0.6); position: absolute; top: 0; height: 100%; border-radius: 0 4px 4px 0; }
+  .cf-value { width: 52px; font-family: var(--mono); font-size: 10.5px; color: var(--text2); text-align: right; flex-shrink: 0; }
+
+  /* ── Risk bars ── */
+  .risk-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .risk-label { width: 80px; font-size: 11px; color: var(--text2); flex-shrink: 0; }
+  .risk-bar-wrap { flex: 1; height: 10px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .risk-bar { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .risk-pct { width: 32px; font-family: var(--mono); font-size: 10px; color: var(--text3); text-align: right; flex-shrink: 0; }
+
+  /* ── Timeline ── */
+  .timeline { position: relative; padding-left: 20px; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 5px; top: 8px; bottom: 8px;
+    width: 1px;
+    background: var(--border);
+  }
+  .timeline-item { position: relative; margin-bottom: 16px; }
+  .timeline-dot {
+    position: absolute;
+    left: -17px; top: 3px;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    border: 2px solid var(--surface);
+    background: var(--blue);
+  }
+  .timeline-date { font-size: 10px; color: var(--text3); margin-bottom: 2px; font-family: var(--mono); }
+  .timeline-desc { font-size: 12px; color: var(--text2); }
+  .timeline-meta { font-size: 10.5px; color: var(--text3); margin-top: 1px; }
+
+  /* ── Search bar ── */
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    margin-bottom: 16px;
+  }
+  .search-icon { color: var(--text3); font-size: 13px; }
+  .search-input {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    flex: 1;
+  }
+  .search-input::placeholder { color: var(--text3); }
+
+  /* ── Contract status timeline ── */
+  .contract-timeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 14px 0;
+  }
+  .ct-step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+  }
+  .ct-step::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 12px;
+    width: 100%; height: 2px;
+    background: var(--border);
+    z-index: 0;
+  }
+  .ct-step:last-child::after { display: none; }
+  .ct-dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    margin: 0 auto 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    position: relative;
+    z-index: 1;
+  }
+  .ct-dot.done { background: var(--blue); color: #fff; }
+  .ct-dot.current { background: var(--green); color: #fff; box-shadow: 0 0 10px rgba(16,185,129,0.4); }
+  .ct-dot.future { background: var(--surface3); color: var(--text3); border: 1px solid var(--border); }
+  .ct-label { font-size: 9.5px; color: var(--text3); }
+
+  /* ── Payment row ── */
+  .payment-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 1fr 1fr 90px;
+    gap: 0;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border2);
+    font-size: 12px;
+    align-items: center;
+  }
+  .payment-row.header {
+    font-size: 10px;
+    color: var(--text3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--surface2);
+  }
+
+  /* ── Valuation chart ── */
+  .val-chart { position: relative; height: 120px; margin: 14px 0; }
+  .val-chart svg { width: 100%; height: 100%; overflow: visible; }
+
+  /* ── Document list ── */
+  .doc-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border2);
+    cursor: pointer;
+    transition: 0.1s;
+  }
+  .doc-item:hover { background: var(--blue-glow); }
+  .doc-item:last-child { border-bottom: none; }
+  .doc-icon {
+    width: 32px; height: 32px;
+    background: var(--blue-dim);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .doc-name { font-size: 12.5px; font-weight: 500; }
+  .doc-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .doc-size { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text3); flex-shrink: 0; }
+
+  /* ── AI panel ── */
+  .ai-panel {
+    background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(59,130,246,0.08));
+    border: 1px solid rgba(139,92,246,0.2);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .ai-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .ai-badge {
+    background: rgba(139,92,246,0.15);
+    color: var(--purple);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .ai-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .ai-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(139,92,246,0.1);
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .ai-row:last-child { border-bottom: none; }
+  .ai-row-icon { color: var(--purple); flex-shrink: 0; margin-top: 1px; }
+  .ai-conf {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    flex-shrink: 0;
+  }
+
+  /* ── Scrollbar custom ── */
+  .content::-webkit-scrollbar { width: 5px; }
+  .content::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+
+  /* ── Maturity ladder ── */
+  .maturity-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .mat-year { width: 36px; font-family: var(--mono); font-size: 11px; color: var(--text3); flex-shrink: 0; }
+  .mat-bar-wrap { flex: 1; height: 22px; background: var(--surface2); border-radius: 5px; overflow: hidden; position: relative; }
+  .mat-bar { height: 100%; border-radius: 5px; display: flex; align-items: center; padding-left: 8px; }
+  .mat-label { font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.8); white-space: nowrap; }
+  .mat-pct { width: 36px; font-family: var(--mono); font-size: 10.5px; color: var(--text3); text-align: right; flex-shrink: 0; }
+
+  /* Transition */
+  .page { animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<nav class="sidebar">
+  <div class="logo">
+    <div class="logo-mark">Aero<span>OS</span></div>
+    <div class="logo-sub">Asset Management Platform</div>
+  </div>
+
+  <div class="nav-section">Portefeuille</div>
+  <div class="nav-item active" onclick="nav(this,'portfolio')">
+    <span class="nav-icon">⬡</span> Portfolio
+  </div>
+  <div class="nav-item" onclick="nav(this,'assets')">
+    <span class="nav-icon">✈</span> Actifs
+  </div>
+  <div class="nav-item" onclick="nav(this,'contracts')">
+    <span class="nav-icon">⊟</span> Contrats
+    <span class="nav-badge">3</span>
+  </div>
+
+  <div class="nav-section">Analyse</div>
+  <div class="nav-item" onclick="nav(this,'valuation')">
+    <span class="nav-icon">◈</span> Valorisation
+  </div>
+  <div class="nav-item" onclick="nav(this,'documents')">
+    <span class="nav-icon">⊡</span> Documents
+  </div>
+  <div class="nav-item" onclick="nav(this,'ai')">
+    <span class="nav-icon">◉</span> Intelligence IA
+    <span class="nav-badge" style="background:var(--purple)">2</span>
+  </div>
+
+  <div class="nav-section">Système</div>
+  <div class="nav-item" onclick="nav(this,'settings')">
+    <span class="nav-icon">⊙</span> Paramètres
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="user-pill">
+      <div class="avatar">JD</div>
+      <div>
+        <div class="user-name">Jean Dumont</div>
+        <div class="user-role">Portfolio Manager</div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════ MAIN ══════════ -->
+<div class="main">
+
+  <!-- ── PAGE: PORTFOLIO ── -->
+  <div id="page-portfolio" class="page active">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Portfolio — AeroOS Demo Fund</div>
+        <div class="topbar-sub" style="color:var(--text3);font-size:11px;">Mis à jour il y a 4 min · 26 juin 2025</div>
+      </div>
+      <div class="metric-pill">
+        <span class="metric-pill-label">Valeur totale</span>
+        <span class="metric-pill-value">€ 1,042 Md</span>
+      </div>
+      <button class="btn btn-ghost">↓ Export</button>
+      <button class="btn btn-primary">+ Ajouter actif</button>
+    </div>
+    <div class="content">
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card blue">
+          <div class="kpi-label">Actifs totaux</div>
+          <div class="kpi-value">43</div>
+          <div class="kpi-sub">38 avions · 5 moteurs spare</div>
+          <div class="kpi-delta up">↑ +2 ce trimestre</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label">Taux locatif</div>
+          <div class="kpi-value">94.2%</div>
+          <div class="kpi-sub">40 actifs sous contrat</div>
+          <div class="kpi-delta up">↑ vs 91.4% T-1</div>
+        </div>
+        <div class="kpi-card teal">
+          <div class="kpi-label">Cash-flow mensuel</div>
+          <div class="kpi-value">$8.4M</div>
+          <div class="kpi-sub">Loyers + MR reserves</div>
+          <div class="kpi-delta up">↑ +340K vs M-1</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-label">Alertes actives</div>
+          <div class="kpi-value">7</div>
+          <div class="kpi-sub">2 critiques · 5 mineures</div>
+          <div class="kpi-delta warn">⚠ Action requise</div>
+        </div>
+      </div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+        <div class="kpi-card blue">
+          <div class="kpi-label">Rendement brut</div>
+          <div class="kpi-value">8.3%</div>
+          <div class="kpi-sub">vs 7.9 % objectif</div>
+          <div class="kpi-delta up">↑ +40bp</div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-label">MR Reserves</div>
+          <div class="kpi-value">$24.1M</div>
+          <div class="kpi-sub">Cumulées · all components</div>
+          <div class="kpi-delta up">↑ Sain</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-label">Maintenance 12m</div>
+          <div class="kpi-value">$18.6M</div>
+          <div class="kpi-sub">Prévision · 9 visites</div>
+          <div class="kpi-delta warn">Déc 2025 critique</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label">Valeur portfolio</div>
+          <div class="kpi-value">€1.042Md</div>
+          <div class="kpi-sub">Base value moyenne</div>
+          <div class="kpi-delta up">↑ +2.1% vs T-1</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <!-- Cash flow chart -->
+        <div class="card">
+          <div class="card-title">Projection Cash-Flow — 12 mois</div>
+          <div style="margin-bottom:8px;">
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);margin-right:12px;">
+              <span style="width:10px;height:4px;background:var(--blue);border-radius:2px;display:inline-block;"></span> Loyers
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);">
+              <span style="width:10px;height:4px;background:var(--amber);border-radius:2px;display:inline-block;opacity:0.7;"></span> Maintenance prévue
+            </span>
+          </div>
+          <div class="cf-row"><div class="cf-label">Juil</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:88%"></div><div class="cf-bar-maint" style="left:88%;width:0%"></div></div><div class="cf-value">$8.4M</div></div>
+          <div class="cf-row"><div class="cf-label">Aoû</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:86%"></div><div class="cf-bar-maint" style="left:70%;width:16%"></div></div><div class="cf-value">$8.1M</div></div>
+          <div class="cf-row"><div class="cf-label">Sep</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:88%"></div></div><div class="cf-value">$8.4M</div></div>
+          <div class="cf-row"><div class="cf-label">Oct</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:85%"></div><div class="cf-bar-maint" style="left:65%;width:20%"></div></div><div class="cf-value">$8.0M</div></div>
+          <div class="cf-row"><div class="cf-label">Nov</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:84%"></div></div><div class="cf-value">$7.9M</div></div>
+          <div class="cf-row"><div class="cf-label">Déc</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:72%"></div><div class="cf-bar-maint" style="left:52%;width:20%"></div></div><div class="cf-value" style="color:var(--amber)">$6.8M</div></div>
+          <div class="cf-row"><div class="cf-label">Jan</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:90%"></div></div><div class="cf-value">$8.5M</div></div>
+          <div class="cf-row"><div class="cf-label">Fév</div><div class="cf-bar-wrap"><div class="cf-bar cf-bar-revenue" style="width:90%"></div></div><div class="cf-value">$8.5M</div></div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);display:flex;justify-content:space-between;font-size:11px;color:var(--text3);">
+            <span>Total 12 mois estimé</span>
+            <span style="font-family:var(--mono);color:var(--text);font-weight:500;">$98.6M</span>
+          </div>
+        </div>
+
+        <!-- Right column: alerts + maturity -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <!-- Alerts -->
+          <div class="card" style="margin-bottom:0;">
+            <div class="card-title">Alertes actives <span style="color:var(--red);margin-left:4px;">● 2 critiques</span></div>
+            <div class="alert-item">
+              <div class="alert-dot dot-red"></div>
+              <div>
+                <div class="alert-text"><strong>Contrat MSN 38291</strong> expire dans <strong style="color:var(--red)">47 jours</strong></div>
+                <div class="alert-time">Vueling · B737-800 · action requise</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-dot dot-red"></div>
+              <div>
+                <div class="alert-text"><strong>Loyer TAP Novembre</strong> non reçu (+8 jours)</div>
+                <div class="alert-time">MSN 51204 · A320-200 · relance envoyée</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-dot dot-amber"></div>
+              <div>
+                <div class="alert-text">Assurance <strong>MSN 47801</strong> expire dans 22 jours</div>
+                <div class="alert-time">Renouvellement à confirmer</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-dot dot-amber"></div>
+              <div>
+                <div class="alert-text">C-Check <strong>MSN 45812</strong> planifié Fév 2026</div>
+                <div class="alert-time">Budget $1.8M · MRO à confirmer</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-dot dot-blue"></div>
+              <div>
+                <div class="alert-text">CofA <strong>MSN 45812</strong> expire Déc 2025</div>
+                <div class="alert-time">Renouvellement EASA en cours</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Maturity ladder -->
+          <div class="card" style="margin-bottom:0;">
+            <div class="card-title">Échéancier des contrats</div>
+            <div class="maturity-row">
+              <div class="mat-year">2025</div>
+              <div class="mat-bar-wrap"><div class="mat-bar" style="width:18%;background:linear-gradient(90deg,var(--red),#f87171);"><span class="mat-label">4 contrats</span></div></div>
+              <div class="mat-pct">9.2%</div>
+            </div>
+            <div class="maturity-row">
+              <div class="mat-year">2026</div>
+              <div class="mat-bar-wrap"><div class="mat-bar" style="width:13%;background:linear-gradient(90deg,var(--amber),#fbbf24);"><span class="mat-label">3 contrats</span></div></div>
+              <div class="mat-pct">6.8%</div>
+            </div>
+            <div class="maturity-row">
+              <div class="mat-year">2027</div>
+              <div class="mat-bar-wrap"><div class="mat-bar" style="width:35%;background:linear-gradient(90deg,var(--blue),var(--teal));"><span class="mat-label">8 contrats</span></div></div>
+              <div class="mat-pct">21%</div>
+            </div>
+            <div class="maturity-row">
+              <div class="mat-year">2028+</div>
+              <div class="mat-bar-wrap"><div class="mat-bar" style="width:75%;background:linear-gradient(90deg,var(--green),#34d399);"><span class="mat-label">28 contrats · stable</span></div></div>
+              <div class="mat-pct">63%</div>
+            </div>
+
+            <!-- Concentration -->
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border2);">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Concentration par locataire</div>
+              <div class="risk-row"><div class="risk-label">Air France</div><div class="risk-bar-wrap"><div class="risk-bar" style="width:62%;background:var(--blue);"></div></div><div class="risk-pct">28%</div></div>
+              <div class="risk-row"><div class="risk-label">Vueling</div><div class="risk-bar-wrap"><div class="risk-bar" style="width:40%;background:var(--teal);"></div></div><div class="risk-pct">18%</div></div>
+              <div class="risk-row"><div class="risk-label">TAP</div><div class="risk-bar-wrap"><div class="risk-bar" style="width:31%;background:var(--amber);"></div></div><div class="risk-pct">14%</div></div>
+              <div class="risk-row"><div class="risk-label">Autres</div><div class="risk-bar-wrap"><div class="risk-bar" style="width:89%;background:var(--surface3);"></div></div><div class="risk-pct">40%</div></div>
+              <div style="font-size:10.5px;color:var(--green);margin-top:6px;">✓ Règle 30% respectée pour tous les locataires</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: ASSETS ── -->
+  <div id="page-assets" class="page">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Registre des actifs</div>
+        <div class="topbar-sub" style="color:var(--text3);font-size:11px;">43 actifs · 38 avions · 5 moteurs spare</div>
+      </div>
+      <button class="btn btn-ghost">Filtres ▾</button>
+      <button class="btn btn-ghost">↓ Export</button>
+      <button class="btn btn-primary">+ Nouvel actif</button>
+    </div>
+    <div class="content">
+      <div class="search-bar">
+        <span class="search-icon">⌕</span>
+        <input class="search-input" placeholder="Rechercher par MSN, immatriculation, type, locataire…" />
+        <span style="font-size:11px;color:var(--text3);">43 résultats</span>
+      </div>
+
+      <div class="data-table">
+        <table>
+          <thead>
+            <tr>
+              <th>MSN</th><th>Type</th><th>Immat.</th><th>Moteurs</th>
+              <th>FH / FC</th><th>Locataire</th><th>Contrat</th><th>Valeur (BV)</th><th>Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr onclick="nav(document.querySelector('[onclick*=assets]').nextElementSibling,'asset-detail')">
+              <td class="mono">45812</td>
+              <td><strong>A320-200</strong></td>
+              <td class="mono">F-HBLA</td>
+              <td class="text2">CFM56-5B4 ×2</td>
+              <td class="mono text2">28 450 / 19 230</td>
+              <td>Air France</td>
+              <td class="mono text2">Jan 19 → Déc 25</td>
+              <td class="mono"><strong>€24.8M</strong></td>
+              <td><span class="badge badge-green">Loué</span></td>
+            </tr>
+            <tr>
+              <td class="mono">38291</td>
+              <td><strong>B737-800</strong></td>
+              <td class="mono">EC-MDZ</td>
+              <td class="text2">CFM56-7B27 ×2</td>
+              <td class="mono text2">34 810 / 27 650</td>
+              <td>Vueling</td>
+              <td class="mono" style="color:var(--red)">→ Exp. 47j</td>
+              <td class="mono"><strong>€19.1M</strong></td>
+              <td><span class="badge badge-amber">Alerte</span></td>
+            </tr>
+            <tr>
+              <td class="mono">51204</td>
+              <td><strong>A320-200</strong></td>
+              <td class="mono">CS-TNV</td>
+              <td class="text2">CFM56-5B4 ×2</td>
+              <td class="mono text2">21 340 / 14 890</td>
+              <td>TAP</td>
+              <td class="mono text2">Mar 21 → Mar 27</td>
+              <td class="mono"><strong>€27.2M</strong></td>
+              <td><span class="badge badge-red">Impayé</span></td>
+            </tr>
+            <tr>
+              <td class="mono">47801</td>
+              <td><strong>A321-200</strong></td>
+              <td class="mono">D-AIDB</td>
+              <td class="text2">CFM56-5B3 ×2</td>
+              <td class="mono text2">19 200 / 13 100</td>
+              <td>Lufthansa</td>
+              <td class="mono text2">Jun 22 → Jun 28</td>
+              <td class="mono"><strong>€31.5M</strong></td>
+              <td><span class="badge badge-green">Loué</span></td>
+            </tr>
+            <tr>
+              <td class="mono">52018</td>
+              <td><strong>A320neo</strong></td>
+              <td class="mono">OE-LOA</td>
+              <td class="text2">CFM LEAP-1A ×2</td>
+              <td class="mono text2">8 420 / 5 930</td>
+              <td>Austrian</td>
+              <td class="mono text2">Sep 23 → Sep 30</td>
+              <td class="mono"><strong>€48.2M</strong></td>
+              <td><span class="badge badge-blue">Récent</span></td>
+            </tr>
+            <tr>
+              <td class="mono">49310</td>
+              <td><strong>B737-800</strong></td>
+              <td class="mono">—</td>
+              <td class="text2">CFM56-7B27 ×2</td>
+              <td class="mono text2">41 200 / 33 800</td>
+              <td>—</td>
+              <td class="mono text3">En transition</td>
+              <td class="mono"><strong>€14.3M</strong></td>
+              <td><span class="badge badge-gray">Off-lease</span></td>
+            </tr>
+            <tr>
+              <td class="mono">53412</td>
+              <td><strong>A319-100</strong></td>
+              <td class="mono">G-EZBT</td>
+              <td class="text2">CFM56-5B5 ×2</td>
+              <td class="mono text2">37 600 / 28 900</td>
+              <td>EasyJet</td>
+              <td class="mono text2">Avr 20 → Avr 26</td>
+              <td class="mono"><strong>€11.8M</strong></td>
+              <td><span class="badge badge-green">Loué</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Asset detail panel (inline) -->
+      <div class="card" style="border-color:var(--blue);border-width:1px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:3px;">Fiche actif</div>
+            <div style="font-size:17px;font-weight:700;">MSN 45812 — Airbus A320-200</div>
+          </div>
+          <span class="badge badge-green" style="font-size:12px;padding:4px 12px;">● Loué</span>
+        </div>
+
+        <div class="two-col" style="margin-bottom:16px;">
+          <div class="card" style="margin-bottom:0;background:var(--surface2);">
+            <div class="card-title">Identité</div>
+            <div class="detail-row"><span class="detail-label">Immatriculation</span><span class="detail-value mono">F-HBLA</span></div>
+            <div class="detail-row"><span class="detail-label">Année fabrication</span><span class="detail-value">2011</span></div>
+            <div class="detail-row"><span class="detail-label">Heures totales</span><span class="detail-value mono">28 450 FH</span></div>
+            <div class="detail-row"><span class="detail-label">Cycles totaux</span><span class="detail-value mono">19 230 FC</span></div>
+            <div class="detail-row"><span class="detail-label">Configuration</span><span class="detail-value">174 sièges · 2-3</span></div>
+            <div class="detail-row"><span class="detail-label">Propriétaire</span><span class="detail-value">AeroOS Demo Fund</span></div>
+            <div class="detail-row"><span class="detail-label">Locataire actuel</span><span class="detail-value" style="color:var(--blue);">Air France</span></div>
+          </div>
+          <div class="card" style="margin-bottom:0;background:var(--surface2);">
+            <div class="card-title">État technique</div>
+            <div class="detail-row"><span class="detail-label">Moteur G.</span><span class="detail-value mono text2">CFM56-5B4 · SN781</span></div>
+            <div class="detail-row"><span class="detail-label">Moteur D.</span><span class="detail-value mono text2">CFM56-5B4 · SN802</span></div>
+            <div class="detail-row"><span class="detail-label">APU</span><span class="detail-value mono text2">APS3200 · SN445</span></div>
+            <div class="detail-row"><span class="detail-label">Train att.</span><span class="detail-value text2">Overhaul Oct 2022</span></div>
+            <div class="detail-row"><span class="detail-label">Prochaine visite</span><span class="detail-value" style="color:var(--amber);">C-Check · Fév 2026</span></div>
+            <div class="detail-row"><span class="detail-label">AD ouvertes</span><span class="detail-value"><span class="badge badge-amber">3 en cours</span></span></div>
+            <div class="detail-row"><span class="detail-label">CofA</span><span class="detail-value">Valide · Déc 2025</span></div>
+          </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="card-title" style="margin-top:4px;">Historique</div>
+        <div class="timeline">
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--text3);"></div>
+            <div class="timeline-date">2011</div>
+            <div class="timeline-desc">Livraison constructeur — Airbus Toulouse</div>
+            <div class="timeline-meta">1er opérateur : Air France</div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-date">2014</div>
+            <div class="timeline-desc">1er C-Check — Toulouse MRO</div>
+            <div class="timeline-meta">Durée : 18 jours · Coût : $420K</div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-date">2020 — 14 mois</div>
+            <div class="timeline-desc">Stockage COVID — Tarbes</div>
+            <div class="timeline-meta">Preservation programme appliqué</div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--green);"></div>
+            <div class="timeline-date">2022</div>
+            <div class="timeline-desc">D-Check — Lufthansa Technik Hamburg</div>
+            <div class="timeline-meta">Durée : 42 jours · Coût : $1.8M · Moteur SN781 restauré</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: CONTRACTS ── -->
+  <div id="page-contracts" class="page">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Contrats de leasing</div>
+        <div class="topbar-sub" style="color:var(--text3);font-size:11px;">40 actifs · 3 alertes actives</div>
+      </div>
+      <button class="btn btn-ghost">Filtres ▾</button>
+      <button class="btn btn-primary">+ Nouveau contrat</button>
+    </div>
+    <div class="content">
+      <!-- Contract lifecycle -->
+      <div class="card">
+        <div class="card-title">Contrat sélectionné — MSN 45812 / Air France</div>
+        <div class="contract-timeline">
+          <div class="ct-step">
+            <div class="ct-dot done">✓</div>
+            <div class="ct-label">Négociation</div>
+          </div>
+          <div class="ct-step">
+            <div class="ct-dot done">✓</div>
+            <div class="ct-label">Signature</div>
+          </div>
+          <div class="ct-step">
+            <div class="ct-dot done">✓</div>
+            <div class="ct-label">Livraison</div>
+          </div>
+          <div class="ct-step">
+            <div class="ct-dot current">●</div>
+            <div class="ct-label">En cours</div>
+          </div>
+          <div class="ct-step">
+            <div class="ct-dot future">→</div>
+            <div class="ct-label">Restitution</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Parties & conditions</div>
+            <div class="detail-row"><span class="detail-label">Bailleur</span><span class="detail-value">AeroOS Demo Fund LLC</span></div>
+            <div class="detail-row"><span class="detail-label">Locataire</span><span class="detail-value" style="color:var(--blue);">Air France S.A.</span></div>
+            <div class="detail-row"><span class="detail-label">Actif</span><span class="detail-value mono">A320 · MSN 45812</span></div>
+            <div class="detail-row"><span class="detail-label">Durée</span><span class="detail-value">84 mois · Jan 19 → Déc 25</span></div>
+            <div class="detail-row"><span class="detail-label">Loi applicable</span><span class="detail-value">Droit irlandais</span></div>
+            <div class="detail-row"><span class="detail-label">Devise</span><span class="detail-value mono">USD</span></div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Conditions financières</div>
+            <div class="detail-row"><span class="detail-label">Loyer mensuel</span><span class="detail-value mono" style="color:var(--green);">$285 000</span></div>
+            <div class="detail-row"><span class="detail-label">Indexation</span><span class="detail-value mono">SOFR + 1.85%</span></div>
+            <div class="detail-row"><span class="detail-label">Dépôt de garantie</span><span class="detail-value mono">$570 000</span></div>
+            <div class="detail-row"><span class="detail-label">MR Moteur G.</span><span class="detail-value mono">$48 000 / mois</span></div>
+            <div class="detail-row"><span class="detail-label">MR Moteur D.</span><span class="detail-value mono">$48 000 / mois</span></div>
+            <div class="detail-row"><span class="detail-label">MR APU</span><span class="detail-value mono">$5 200 / mois</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment tracker -->
+      <div class="data-table">
+        <div class="payment-row header">
+          <div>Période</div><div>Montant dû</div><div>Date attendue</div><div>Reçu le</div><div>Statut</div>
+        </div>
+        <div class="payment-row">
+          <div class="mono">Avr 25</div><div class="mono">$285 000</div><div class="mono text3">01/04/2025</div><div class="mono text2">02/04/2025</div>
+          <div><span class="badge badge-green">✓ Reçu</span></div>
+        </div>
+        <div class="payment-row">
+          <div class="mono">Mai 25</div><div class="mono">$285 000</div><div class="mono text3">01/05/2025</div><div class="mono text2">30/04/2025</div>
+          <div><span class="badge badge-green">✓ Reçu</span></div>
+        </div>
+        <div class="payment-row">
+          <div class="mono">Jun 25</div><div class="mono">$285 000</div><div class="mono text3">01/06/2025</div><div class="mono text2">03/06/2025</div>
+          <div><span class="badge badge-green">✓ Reçu</span></div>
+        </div>
+        <div class="payment-row" style="background:rgba(245,158,11,0.04);">
+          <div class="mono">Jul 25</div><div class="mono">$285 000</div><div class="mono text3">01/07/2025</div><div class="mono text3">—</div>
+          <div><span class="badge badge-amber">En attente</span></div>
+        </div>
+        <div class="payment-row">
+          <div class="mono">Aoû 25</div><div class="mono">$285 000</div><div class="mono text3">01/08/2025</div><div class="mono text3">—</div>
+          <div><span class="badge badge-gray">Futur</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: VALUATION ── -->
+  <div id="page-valuation" class="page">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Valuation Engine</div>
+        <div class="topbar-sub" style="color:var(--text3);font-size:11px;">Dernière mise à jour : 1er juillet 2025 · Recalcul mensuel automatique</div>
+      </div>
+      <button class="btn btn-ghost">↓ Export rapport</button>
+      <button class="btn btn-primary">Lancer recalcul</button>
+    </div>
+    <div class="content">
+      <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="kpi-card blue">
+          <div class="kpi-label">Base Value — MSN 45812</div>
+          <div class="kpi-value">€24.8M</div>
+          <div class="kpi-sub">Conditions de marché normales</div>
+          <div class="kpi-delta down">↓ −1.2% vs M-1</div>
+        </div>
+        <div class="kpi-card teal">
+          <div class="kpi-label">Current Market Value</div>
+          <div class="kpi-value">€23.9M</div>
+          <div class="kpi-sub">Conditions actuelles du marché</div>
+          <div class="kpi-delta down">↓ −3.6% vs BV</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-label">Residual Value — 2030</div>
+          <div class="kpi-value">€16.2M</div>
+          <div class="kpi-sub">Projection fin de bail</div>
+          <div class="kpi-delta warn">Décote −4.2%/an</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <!-- Depreciation curve -->
+        <div class="card">
+          <div class="card-title">Courbe de valeur — A320-200 MSN 45812</div>
+          <div class="val-chart">
+            <svg viewBox="0 0 400 110" preserveAspectRatio="none">
+              <!-- Grid -->
+              <line x1="0" y1="22" x2="400" y2="22" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+              <line x1="0" y1="44" x2="400" y2="44" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+              <line x1="0" y1="66" x2="400" y2="66" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+              <line x1="0" y1="88" x2="400" y2="88" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+              <!-- Base Value curve (blue) -->
+              <path d="M0,10 C60,18 110,30 170,48 C230,65 280,78 340,90 C370,96 390,102 400,106"
+                    fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- Area under BV -->
+              <path d="M0,10 C60,18 110,30 170,48 C230,65 280,78 340,90 C370,96 390,102 400,106 L400,110 L0,110Z"
+                    fill="url(#blueGrad)" opacity="0.15"/>
+              <!-- CMV curve (teal, dashed) -->
+              <path d="M0,14 C60,24 110,38 170,56 C230,73 280,86 340,97 C370,103 390,107 400,110"
+                    fill="none" stroke="#0EA5E9" stroke-width="1.5" stroke-dasharray="6 4" stroke-linecap="round"/>
+              <!-- Current position dot -->
+              <circle cx="195" cy="52" r="5" fill="#3B82F6" stroke="#0A0F1C" stroke-width="2"/>
+              <line x1="195" y1="0" x2="195" y2="110" stroke="rgba(59,130,246,0.3)" stroke-width="1" stroke-dasharray="3 3"/>
+              <text x="200" y="16" font-size="9" fill="#94A3B8">Aujourd'hui</text>
+              <text x="200" y="26" font-size="9" fill="#3B82F6">€24.8M</text>
+              <!-- RV dot -->
+              <circle cx="305" cy="83" r="4" fill="#F59E0B" stroke="#0A0F1C" stroke-width="2"/>
+              <text x="310" y="82" font-size="9" fill="#F59E0B">€16.2M</text>
+              <text x="310" y="91" font-size="9" fill="#94A3B8">2030</text>
+              <defs>
+                <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#3B82F6"/>
+                  <stop offset="100%" stop-color="transparent"/>
+                </linearGradient>
+              </defs>
+              <!-- X axis labels -->
+              <text x="0" y="108" font-size="8" fill="#64748B">2011</text>
+              <text x="92" y="108" font-size="8" fill="#64748B">2015</text>
+              <text x="192" y="108" font-size="8" fill="#64748B">2019</text>
+              <text x="290" y="108" font-size="8" fill="#64748B">2025</text>
+              <text x="372" y="108" font-size="8" fill="#64748B">2031</text>
+            </svg>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:8px;">
+            <div style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text3);">
+              <div style="width:16px;height:2px;background:var(--blue);border-radius:1px;"></div> Base Value
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text3);">
+              <div style="width:16px;height:0;border-top:2px dashed var(--teal);"></div> Current Market Value
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text3);">
+              <div style="width:8px;height:8px;background:var(--amber);border-radius:50%;"></div> Résiduelle cible
+            </div>
+          </div>
+        </div>
+
+        <!-- Valuation history -->
+        <div class="card">
+          <div class="card-title">Historique de valorisation</div>
+          <div class="data-table" style="border:none;margin-bottom:0;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th><th>Base Value</th><th>CMV</th><th>Source</th><th>Δ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="mono">Jul 2025</td>
+                  <td class="mono">€24.8M</td>
+                  <td class="mono text2">€23.9M</td>
+                  <td><span class="badge badge-blue">Auto</span></td>
+                  <td><span class="badge badge-red">−1.2%</span></td>
+                </tr>
+                <tr>
+                  <td class="mono">Jun 2025</td>
+                  <td class="mono">€25.1M</td>
+                  <td class="mono text2">€24.2M</td>
+                  <td><span class="badge badge-blue">Auto</span></td>
+                  <td><span class="badge badge-gray">stable</span></td>
+                </tr>
+                <tr>
+                  <td class="mono">Jan 2025</td>
+                  <td class="mono">€25.8M</td>
+                  <td class="mono text2">€24.8M</td>
+                  <td><span class="badge badge-blue">Auto</span></td>
+                  <td><span class="badge badge-red">−0.8%</span></td>
+                </tr>
+                <tr>
+                  <td class="mono">Jul 2022</td>
+                  <td class="mono">€28.4M</td>
+                  <td class="mono text2">€26.8M</td>
+                  <td><span class="badge badge-green">Certifié</span></td>
+                  <td><span class="badge badge-gray">—</span></td>
+                </tr>
+                <tr>
+                  <td class="mono">Jan 2020</td>
+                  <td class="mono">€31.2M</td>
+                  <td class="mono text2">€28.9M</td>
+                  <td><span class="badge badge-purple">AVAC</span></td>
+                  <td><span class="badge badge-gray">—</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: DOCUMENTS ── -->
+  <div id="page-documents" class="page">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Document Vault</div>
+        <div class="topbar-sub" style="color:var(--text3);font-size:11px;">1 284 documents · 43 actifs · Chiffrement AES-256</div>
+      </div>
+      <button class="btn btn-ghost">Filtres ▾</button>
+      <button class="btn btn-primary">↑ Upload</button>
+    </div>
+    <div class="content">
+      <div class="search-bar">
+        <span class="search-icon">⌕</span>
+        <input class="search-input" placeholder="Recherche full-text dans tous les documents…" />
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;">Avancée</button>
+      </div>
+
+      <div class="three-col">
+        <div class="card" style="cursor:pointer;" onclick="this.style.borderColor='var(--blue)'">
+          <div style="font-size:28px;margin-bottom:8px;">📜</div>
+          <div style="font-weight:600;margin-bottom:4px;">Certificats</div>
+          <div style="font-size:11px;color:var(--text3);">CofA · CofR · Noise · W&B</div>
+          <div style="font-family:var(--mono);font-size:20px;font-weight:500;margin-top:10px;color:var(--blue);">312</div>
+        </div>
+        <div class="card" style="cursor:pointer;">
+          <div style="font-size:28px;margin-bottom:8px;">📋</div>
+          <div style="font-weight:600;margin-bottom:4px;">Contrats & Finance</div>
+          <div style="font-size:11px;color:var(--text3);">Leases · Avenants · Assurances</div>
+          <div style="font-family:var(--mono);font-size:20px;font-weight:500;margin-top:10px;color:var(--blue);">428</div>
+        </div>
+        <div class="card" style="cursor:pointer;">
+          <div style="font-size:28px;margin-bottom:8px;">🔧</div>
+          <div style="font-weight:600;margin-bottom:4px;">Maintenance</div>
+          <div style="font-size:11px;color:var(--text3);">C/D-Check · ESV · Log books</div>
+          <div style="font-family:var(--mono);font-size:20px;font-weight:500;margin-top:10px;color:var(--blue);">544</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <div class="section-title">Documents récents — MSN 45812</div>
+        <div class="section-count">38 documents</div>
+      </div>
+
+      <div class="data-table">
+        <div class="doc-item">
+          <div class="doc-icon">📄</div>
+          <div>
+            <div class="doc-name">Engine Shop Visit Report — CFM56-5B4 SN781</div>
+            <div class="doc-meta">Lufthansa Technik Hamburg · Mars 2022 · Maintenance · <span class="badge badge-green" style="font-size:9px;">Certifié</span></div>
+          </div>
+          <div class="doc-size">2.4 MB</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-icon">📋</div>
+          <div>
+            <div class="doc-name">Lease Agreement — Air France / MSN 45812</div>
+            <div class="doc-meta">Signé 15 jan 2019 · Contrat · v3.1 · <span class="badge badge-blue" style="font-size:9px;">Extrait IA</span></div>
+          </div>
+          <div class="doc-size">840 KB</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-icon">📜</div>
+          <div>
+            <div class="doc-name">Certificate of Airworthiness — DGAC France</div>
+            <div class="doc-meta">Valide · Expire Déc 2025 · <span class="badge badge-amber" style="font-size:9px;">Renouvellement J-183</span></div>
+          </div>
+          <div class="doc-size">320 KB</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-icon">📷</div>
+          <div>
+            <div class="doc-name">Rapport d'inspection pré-livraison — Jan 2019</div>
+            <div class="doc-meta">142 photos · Inspection physique complète · Validé</div>
+          </div>
+          <div class="doc-size">48.2 MB</div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-icon">📄</div>
+          <div>
+            <div class="doc-name">D-Check Report — Lufthansa Technik · Nov 2022</div>
+            <div class="doc-meta">48 pages · Rapport technique · <span class="badge badge-purple" style="font-size:9px;">Résumé IA disponible</span></div>
+          </div>
+          <div class="doc-size">6.1 MB</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: AI ── -->
+  <div id="page-ai" class="page">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Intelligence IA</div>
+        <div class="topbar-sub" style="color:var(--text3);font-size:11px;">2 analyses en attente de validation · Modèle GPT-4o · Confiance min. 85%</div>
+      </div>
+      <button class="btn btn-primary">Analyser un document</button>
+    </div>
+    <div class="content">
+
+      <!-- AI extraction pending -->
+      <div class="ai-panel">
+        <div class="ai-header">
+          <span class="ai-badge">◉ IA</span>
+          <div class="ai-title">Extraction contrat — Lease Agreement MSN 45812 v3.1</div>
+          <span style="margin-left:auto;font-size:11px;color:var(--text3);">Il y a 8 min</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:12px;padding:10px;background:rgba(139,92,246,0.06);border-radius:6px;">
+          L'IA a extrait <strong style="color:var(--text);">18 champs</strong> depuis le contrat PDF (840 KB · 62 pages). Vérifiez et confirmez avant enregistrement.
+        </div>
+        <div class="ai-row">
+          <span class="ai-row-icon">◆</span>
+          <span>Locataire</span>
+          <strong style="margin-left:8px;color:var(--text);">Air France S.A.</strong>
+          <span class="ai-conf" style="color:var(--green);">99%</span>
+        </div>
+        <div class="ai-row">
+          <span class="ai-row-icon">◆</span>
+          <span>Loyer mensuel</span>
+          <strong style="margin-left:8px;color:var(--text);">$285 000 USD</strong>
+          <span class="ai-conf" style="color:var(--green);">97%</span>
+        </div>
+        <div class="ai-row">
+          <span class="ai-row-icon">◆</span>
+          <span>Date de fin</span>
+          <strong style="margin-left:8px;color:var(--text);">31/12/2025</strong>
+          <span class="ai-conf" style="color:var(--amber);">88% — vérifier p.14</span>
+        </div>
+        <div class="ai-row">
+          <span class="ai-row-icon">◆</span>
+          <span>MR Engine gauche</span>
+          <strong style="margin-left:8px;color:var(--text);">$48 000 / mois</strong>
+          <span class="ai-conf" style="color:var(--green);">95%</span>
+        </div>
+        <div class="ai-row">
+          <span class="ai-row-icon">◆</span>
+          <span>Clause sanctions OFAC</span>
+          <strong style="margin-left:8px;" style="color:var(--amber);">Détectée — p.41, §12.3</strong>
+          <span class="ai-conf" style="color:var(--red);">À réviser manuellement</span>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <button class="btn btn-primary">✓ Valider et enregistrer</button>
+          <button class="btn btn-ghost">Corriger un champ</button>
+          <button class="btn btn-ghost" style="color:var(--red);">Rejeter</button>
+        </div>
+      </div>
+
+      <!-- AI summary -->
+      <div class="ai-panel" style="border-color:rgba(14,165,233,0.2);background:linear-gradient(135deg,rgba(14,165,233,0.06),rgba(59,130,246,0.06));">
+        <div class="ai-header">
+          <span class="ai-badge" style="background:rgba(14,165,233,0.15);color:var(--teal);">◉ RÉSUMÉ</span>
+          <div class="ai-title">D-Check Report — MSN 45812 · Lufthansa Technik · Nov 2022</div>
+          <span style="margin-left:auto;font-size:11px;color:var(--text3);">Il y a 2h</span>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:14px;font-size:12.5px;line-height:1.6;color:var(--text2);">
+          <p style="margin-bottom:8px;">
+            <strong style="color:var(--text);">Résultat général :</strong> D-Check complété avec succès. Durée 42 jours. Aucune non-conformité majeure identifiée.
+          </p>
+          <p style="margin-bottom:8px;">
+            <strong style="color:var(--text);">Moteurs :</strong> Engine SN781 — performance restoration complète. EGT margin restaurée à +42°C. LLP status : 8 400 cycles restants sur fan disk. Prochaine shop visit estimée 2027.
+          </p>
+          <p style="margin-bottom:8px;">
+            <strong style="color:var(--text);">Structure :</strong> 3 Airworthiness Directives closes lors de la visite. 2 AD restent ouvertes (non critiques). Traitement corrosion zone 11F effectué.
+          </p>
+          <p>
+            <strong style="color:var(--text);">Coût total :</strong> $1 847 000 USD · dont $920K moteurs, $480K structure, $447K systèmes.
+          </p>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <button class="btn btn-ghost">Lier à MSN 45812</button>
+          <button class="btn btn-ghost">Voir rapport source</button>
+        </div>
+      </div>
+
+      <!-- AI insights -->
+      <div class="card">
+        <div class="card-title">Recommandations IA — Portfolio</div>
+        <div class="ai-row" style="border-color:var(--border2);">
+          <span style="font-size:15px;">⚠</span>
+          <div>
+            <div style="font-size:12.5px;color:var(--text);font-weight:500;">MSN 38291 — Vendre avant restitution recommandé</div>
+            <div style="font-size:11.5px;color:var(--text2);margin-top:3px;">Le B737-800 de 12 ans approche de sa fenêtre de valeur optimale. La valeur résiduelle post-D-Check serait supérieure de 18% à la valeur de continuation de bail actuelle. Fenêtre estimée : T3 2025.</div>
+          </div>
+        </div>
+        <div class="ai-row" style="border-color:var(--border2);">
+          <span style="font-size:15px;">📊</span>
+          <div>
+            <div style="font-size:12.5px;color:var(--text);font-weight:500;">TAP Air Portugal — Risque crédit en hausse</div>
+            <div style="font-size:11.5px;color:var(--text2);margin-top:3px;">Analyse des données publiques et historique de paiement : le score de risque de TAP est passé de 62 à 71/100. Recommandation : demander une garantie bancaire supplémentaire lors du prochain renouvellement.</div>
+          </div>
+        </div>
+        <div class="ai-row" style="border-color:transparent;">
+          <span style="font-size:15px;">💡</span>
+          <div>
+            <div style="font-size:12.5px;color:var(--text);font-weight:500;">Portfolio sous-évalué de ~€12M vs marché</div>
+            <div style="font-size:11.5px;color:var(--text2);margin-top:3px;">L'agrégation des CMV vs Base Values sur l'ensemble du portfolio révèle un écart favorable de 4.8%. Les A320neo (MSN 52018, 53801) sont particulièrement sous-évalués dans les conditions de marché actuelles.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: SETTINGS ── -->
+  <div id="page-settings" class="page">
+    <div class="topbar">
+      <div class="topbar-title">Paramètres</div>
+    </div>
+    <div class="content">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">Organisation</div>
+          <div class="detail-row"><span class="detail-label">Tenant</span><span class="detail-value">AeroOS Demo Fund LLC</span></div>
+          <div class="detail-row"><span class="detail-label">Plan</span><span class="detail-value"><span class="badge badge-blue">Professional</span></span></div>
+          <div class="detail-row"><span class="detail-label">Actifs inclus</span><span class="detail-value mono">43 / 50</span></div>
+          <div class="detail-row"><span class="detail-label">Utilisateurs</span><span class="detail-value mono">7 / 10</span></div>
+          <div class="detail-row"><span class="detail-label">Stockage documents</span><span class="detail-value mono">12.4 GB / 100 GB</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Sécurité</div>
+          <div class="detail-row"><span class="detail-label">MFA</span><span class="detail-value"><span class="badge badge-green">Actif · tous les utilisateurs</span></span></div>
+          <div class="detail-row"><span class="detail-label">SSO</span><span class="detail-value"><span class="badge badge-green">Microsoft Azure AD</span></span></div>
+          <div class="detail-row"><span class="detail-label">Chiffrement</span><span class="detail-value">AES-256 · TLS 1.3</span></div>
+          <div class="detail-row"><span class="detail-label">Dernier audit</span><span class="detail-value mono">Avril 2025</span></div>
+          <div class="detail-row"><span class="detail-label">Audit log</span><span class="detail-value"><span class="badge badge-green">Actif · immuable</span></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Règles d'alertes configurées</div>
+        <div class="detail-row"><span class="detail-label">Expiration contrat</span><span class="detail-value">J−180 · J−90 · J−30 · J−7</span></div>
+        <div class="detail-row"><span class="detail-label">Loyer non reçu</span><span class="detail-value">J+3 · J+7 · J+15</span></div>
+        <div class="detail-row"><span class="detail-label">Assurance expirante</span><span class="detail-value">J−60 · J−30</span></div>
+        <div class="detail-row"><span class="detail-label">Seuil MR reserves</span><span class="detail-value">Alerte si &lt; 2 mois de reserves</span></div>
+        <div class="detail-row"><span class="detail-label">Concentration locataire</span><span class="detail-value">Alerte si &gt; 30% du portfolio</span></div>
+        <div class="detail-row"><span class="detail-label">Canal de notification</span><span class="detail-value">E-mail · In-app · Webhook Slack</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function nav(el, pageId) {
+  // Update nav items
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  // Find clicked nav item
+  let navEl = el;
+  if (!navEl.classList.contains('nav-item')) {
+    navEl = document.querySelector('.nav-item.active');
+  } else {
+    navEl.classList.add('active');
+  }
+
+  // Update pages
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const page = document.getElementById('page-' + pageId);
+  if (page) page.classList.add('active');
+
+  // Set topbar based on page
+  if (el.classList && el.classList.contains('nav-item')) {
+    el.classList.add('active');
+  }
+}
+
+// Wire nav items properly
+document.querySelectorAll('.nav-item').forEach(item => {
+  const onclick = item.getAttribute('onclick');
+  if (onclick) {
+    const match = onclick.match(/'([^']+)'\)/);
+    if (match) {
+      item.setAttribute('data-page', match[1]);
+      item.onclick = function() {
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        this.classList.add('active');
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        const page = document.getElementById('page-' + this.dataset.page);
+        if (page) page.classList.add('active');
+      };
+    }
+  }
+});
+</script>
+</body>
+</html>

@@ -10,20 +10,27 @@
  * Le moteur est idempotent — relancer ne crée pas de doublons.
  */
 
-import { prisma } from '../src/lib/db';
+import { prisma, asSystem } from '../src/lib/db';
 import { evaluateAlerts } from '../src/lib/alerts';
 
 async function main() {
   const target = process.argv[2];
 
-  const tenants = await prisma.tenant.findMany({
-    where: {
-      isActive: true,
-      deletedAt: null,
-      ...(target ? { name: { contains: target, mode: "insensitive" as const } } : {}),
-    },
-    select: { id: true, name: true },
-  });
+  // Lister tous les tenants traverse volontairement le RLS : sans
+  // contexte tenant (aucun n'a de sens ici, on les découvre), une
+  // requête via le client applicatif normal ne verrait aucune ligne.
+  const tenants = await asSystem(
+    'run-alerts: découverte des tenants actifs pour évaluation planifiée',
+    (client) =>
+      client.tenant.findMany({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          ...(target ? { name: { contains: target, mode: 'insensitive' as const } } : {}),
+        },
+        select: { id: true, name: true },
+      })
+  );
 
   if (tenants.length === 0) {
     console.error(

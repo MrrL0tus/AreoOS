@@ -79,7 +79,7 @@ export default async function ContractsPage() {
           </div>
         </div>
         <button className="btn btn-ghost">↓ Export</button>
-        <button className="btn btn-primary">+ Nouveau contrat</button>
+        <Link href="/contracts/new" className="btn btn-primary">+ Nouveau contrat</Link>
       </div>
 
       <div className="content">
@@ -121,7 +121,9 @@ export default async function ContractsPage() {
                   return (
                     <tr key={c.id}>
                       <td className="mono" style={{ fontSize: 11.5 }}>
-                        {c.reference}
+                        <Link href={`/contracts/${c.id}`} style={{ color: 'var(--blue)' }}>
+                          {c.reference}
+                        </Link>
                         {c.extractedByAi && (
                           <span
                             className="badge badge-purple"

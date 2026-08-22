@@ -103,6 +103,7 @@ enum AlertType {
   INSURANCE_EXPIRY
   MAINTENANCE_DUE
   CERTIFICATE_EXPIRY
+  DOCUMENT_EXPIRY
   MR_RESERVE_THRESHOLD
   CONCENTRATION_BREACH
   SANCTIONS_FLAG
@@ -200,11 +201,12 @@ model User {
   tenantId String
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
 
-  email        String
-  passwordHash String
-  firstName    String
-  lastName     String
-  role         UserRole @default(VIEWER)
+  email             String
+  passwordHash      String
+  passwordChangedAt DateTime @default(now())
+  firstName         String
+  lastName          String
+  role              UserRole @default(VIEWER)
 
   mfaEnabled Boolean @default(false) // D-sécurité : obligatoire en prod
   mfaSecret  String?
@@ -396,6 +398,27 @@ model Operator {
   @@map("operators")
 }
 
+// Liste de référence des entités sanctionnées (T4.1, étape 1 : import
+// manuel de la liste SDN de l'OFAC). Donnée de référence globale, PAS
+// une donnée tenant — délibérément sans tenantId ni RLS (cf.
+// prisma/rls.sql, table absente de tenant_tables), au même titre qu'une
+// table de code postal ou de devise. Alimentée par
+// scripts/import-sanctions-list.ts.
+model SanctionedEntity {
+  id   String @id @default(uuid())
+  name String
+
+  program String? // ex. "SDN", "UKRAINE-EO13662"
+  source  String // ex. "OFAC SDN List"
+  listDate DateTime // date de publication de la liste importée
+
+  createdAt DateTime @default(now())
+
+  @@unique([name, source])
+  @@index([name])
+  @@map("sanctioned_entities")
+}
+
 // ─────────────────────────────────────────────────────────────────
 // LEASING MANAGEMENT
 // ─────────────────────────────────────────────────────────────────
@@ -519,15 +542,29 @@ model Document {
   mimeType   String
   sizeBytes  Int
 
+  // Nouvelle version d'un document existant : jamais d'écrasement, une
+  // nouvelle ligne pointant vers l'original via parentDocId.
+  parentDocId String?
+  parentDoc   Document?  @relation("DocumentVersions", fields: [parentDocId], references: [id])
+  versions    Document[] @relation("DocumentVersions")
+
   version     Int       @default(1)
   issueDate   DateTime?
   expiryDate  DateTime? // déclenche les alertes
 
-  // Recherche full-text (tsvector côté Postgres)
-  extractedText String? @db.Text
+  // Recherche full-text (tsvector côté Postgres) — colonne alimentée par
+  // un trigger (cf. prisma/rls.sql §5), jamais écrite depuis Prisma.
+  extractedText String?                @db.Text
+  searchVector  Unsupported("tsvector")? @map("search_vector")
 
-  // IA
-  aiSummary String? @db.Text
+  // IA — résumé de rapport technique (T3.3). Toute donnée chiffrée est
+  // ESTIMATED (conformité §7 D5) : jamais de source pour un calcul
+  // réglementaire.
+  aiSummary           String?   @db.Text // synthèse narrative
+  aiSummaryData       Json? // état moteurs, AD, coûts, prochaine échéance
+  aiSummaryModel      String? // traçabilité modèle (conformité §1.1)
+  aiSummaryFeedback   Boolean? // true = utile, false = pas utile, null = aucun retour
+  aiSummaryFeedbackAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

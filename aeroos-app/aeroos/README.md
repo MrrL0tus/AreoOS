@@ -38,17 +38,17 @@ Application disponible sur **http://localhost:3000**
 
 ## Ce que fait la plateforme aujourd'hui
 
-| Module | État | Description |
-|---|---|---|
-| **Registre d'actifs** | ✅ | Avions, moteurs, composants. Fiche complète type « jumeau numérique » : identité, utilisation, navigabilité, historique. |
-| **Leasing** | ✅ | Contrats, conditions financières, maintenance reserves, suivi des paiements. |
-| **Portfolio** | ✅ | KPIs consolidés, cash-flow, concentration par locataire, échéancier. |
-| **Valorisation** | ✅ | Moteur algorithmique : Base Value, Current Market Value, Residual Value. |
-| **Alertes** | ✅ | 8 règles : expirations, impayés, assurances, maintenance, LLP, concentration, sanctions. |
-| **Conformité** | ✅ | Isolation RLS, audit log immuable, soft delete, traçabilité qualité des données. |
-| **Documents** | 🚧 | Modèle de données prêt, upload S3 à implémenter. |
-| **IA (extraction contrats)** | 🚧 | Champs de traçabilité en base, pipeline à construire. |
-| **MFA** | 🚧 | Champs en base, TOTP à brancher avant ouverture beta. |
+| Module                             | État | Description                                                                                                                    |
+| ---------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Registre d'actifs**        | ✅    | Avions, moteurs, composants. Fiche complète type « jumeau numérique » : identité, utilisation, navigabilité, historique. |
+| **Leasing**                  | ✅    | Contrats, conditions financières, maintenance reserves, suivi des paiements.                                                  |
+| **Portfolio**                | ✅    | KPIs consolidés, cash-flow, concentration par locataire, échéancier.                                                        |
+| **Valorisation**             | ✅    | Moteur algorithmique : Base Value, Current Market Value, Residual Value.                                                       |
+| **Alertes**                  | ✅    | 8 règles : expirations, impayés, assurances, maintenance, LLP, concentration, sanctions.                                     |
+| **Conformité**              | ✅    | Isolation RLS, audit log immuable, soft delete, traçabilité qualité des données.                                           |
+| **Documents**                | 🚧    | Modèle de données prêt, upload S3 à implémenter.                                                                          |
+| **IA (extraction contrats)** | 🚧    | Champs de traçabilité en base, pipeline à construire.                                                                       |
+| **MFA**                      | 🚧    | Champs en base, TOTP à brancher avant ouverture beta.                                                                         |
 
 ---
 
@@ -127,15 +127,15 @@ npm run test:isolation
 Ces choix viennent du cahier de conformité (§7) et sont **coûteux à ajouter
 après coup** — c'est pourquoi ils sont dans le socle dès maintenant.
 
-| Réf. | Décision | Où |
-|---|---|---|
-| D1 | Isolation tenant par RLS Postgres | `prisma/rls.sql`, `lib/db.ts` |
-| D2 | Région de stockage par tenant, immuable | `Tenant.storageRegion` |
-| D3 | Audit log append-only, jamais modifiable | `AuditLog`, `audit()` |
-| D4 | Pas de données personnelles dans les logs applicatifs | `lib/db.ts` |
-| D5 | Séparation données certifiées / déclarées / estimées | `DataQuality` |
-| — | Soft delete partout, aucune suppression physique | `deletedAt` |
-| §4.3 | Valorisations marquées non certifiées | `isCertified`, bandeau UI |
+| Réf. | Décision                                                  | Où                               |
+| ----- | ---------------------------------------------------------- | --------------------------------- |
+| D1    | Isolation tenant par RLS Postgres                          | `prisma/rls.sql`, `lib/db.ts` |
+| D2    | Région de stockage par tenant, immuable                   | `Tenant.storageRegion`          |
+| D3    | Audit log append-only, jamais modifiable                   | `AuditLog`, `audit()`         |
+| D4    | Pas de données personnelles dans les logs applicatifs     | `lib/db.ts`                     |
+| D5    | Séparation données certifiées / déclarées / estimées | `DataQuality`                   |
+| —    | Soft delete partout, aucune suppression physique           | `deletedAt`                     |
+| §4.3 | Valorisations marquées non certifiées                    | `isCertified`, bandeau UI       |
 
 ---
 

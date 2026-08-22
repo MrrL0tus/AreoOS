@@ -36,6 +36,7 @@ export interface AlertRuleConfig {
   paymentAlertDays: number[];
   insuranceAlertDays: number[];
   certificateAlertDays: number[];
+  documentAlertDays: number[];
   maintenanceAlertMonths: number;
   concentrationLimitPct: number;
   llpCycleThreshold: number;
@@ -46,6 +47,7 @@ export const DEFAULT_RULES: AlertRuleConfig = {
   paymentAlertDays: [3, 7, 15],
   insuranceAlertDays: [60, 30],
   certificateAlertDays: [90, 30],
+  documentAlertDays: [60, 30],
   maintenanceAlertMonths: 6,
   concentrationLimitPct: 30,
   llpCycleThreshold: 3000,
@@ -68,6 +70,7 @@ export async function evaluateAlerts(
     candidates.push(...(await checkOverduePayments(tx, rules)));
     candidates.push(...(await checkInsuranceExpiry(tx, rules)));
     candidates.push(...(await checkCertificateExpiry(tx, rules)));
+    candidates.push(...(await checkDocumentExpiry(tx, rules)));
     candidates.push(...(await checkUpcomingMaintenance(tx, rules)));
     candidates.push(...(await checkConcentration(tx, rules)));
     candidates.push(...(await checkLlpThresholds(tx, rules)));
@@ -286,6 +289,55 @@ async function checkCertificateExpiry(
         dedupeKey: `certificate:${a.id}:${label}:${threshold}`,
       });
     }
+  }
+
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// RÈGLE 4bis — Expiration des documents
+// ─────────────────────────────────────────────────────────────────
+
+async function checkDocumentExpiry(
+  tx: TxClient,
+  rules: AlertRuleConfig
+): Promise<AlertCandidate[]> {
+  const now = new Date();
+  const horizon = addDays(now, Math.max(...rules.documentAlertDays));
+
+  const documents = await tx.document.findMany({
+    where: {
+      expiryDate: { gte: now, lte: horizon },
+      deletedAt: null,
+    },
+    select: {
+      id: true, title: true, category: true, expiryDate: true,
+      aircraftId: true,
+      aircraft: { select: { msn: true } },
+    },
+  });
+
+  const out: AlertCandidate[] = [];
+
+  for (const d of documents) {
+    if (!d.expiryDate) continue;
+    const daysLeft = daysBetween(now, d.expiryDate);
+    const threshold = rules.documentAlertDays
+      .filter((n) => daysLeft <= n)
+      .sort((a, b) => a - b)[0];
+    if (threshold === undefined) continue;
+
+    out.push({
+      type: 'DOCUMENT_EXPIRY',
+      severity: daysLeft <= 30 ? 'HIGH' : 'MEDIUM',
+      title: `Document « ${d.title} » expire dans ${daysLeft} jours`,
+      message:
+        `${d.aircraft ? `MSN ${d.aircraft.msn} — ` : ''}` +
+        `document à renouveler avant le ${fmtDate(d.expiryDate)}.`,
+      aircraftId: d.aircraftId ?? undefined,
+      dueDate: d.expiryDate,
+      dedupeKey: `document:${d.id}:${threshold}`,
+    });
   }
 
   return out;

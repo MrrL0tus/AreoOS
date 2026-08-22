@@ -22,6 +22,7 @@ const ENGINE_POSITION_LABELS: Record<string, string> = {
 };
 
 const EVENT_LABELS: Record<string, string> = {
+  CREATION: 'Création',
   DELIVERY: 'Livraison',
   OPERATOR_CHANGE: "Changement d'opérateur",
   MAINTENANCE_VISIT: 'Visite de maintenance',
@@ -131,6 +132,9 @@ export default async function AssetDetailPage({
         <span className={`badge badge-${status.tone}`} style={{ fontSize: 12, padding: '4px 12px' }}>
           {status.label}
         </span>
+        <Link href={`/assets/${aircraft.id}/edit`} className="btn btn-ghost" style={{ marginLeft: 10 }}>
+          Modifier
+        </Link>
       </div>
 
       <div className="content">

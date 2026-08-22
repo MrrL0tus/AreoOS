@@ -13,21 +13,27 @@
  * manuellement n'est jamais écrasée par ce script.
  */
 
-import { prisma, withTenant } from '../src/lib/db';
+import { prisma, withTenant, asSystem } from '../src/lib/db';
 import { calculateValuation } from '../src/lib/valuation';
 
 async function main() {
   const target = process.argv[2];
   const valuationDate = new Date();
 
-  const tenants = await prisma.tenant.findMany({
-    where: {
-      isActive: true,
-      deletedAt: null,
-      ...(target ? { name: { contains: target, mode: "insensitive" as const } } : {}),
-    },
-    select: { id: true, name: true },
-  });
+  // Découverte cross-tenant : contourne volontairement le RLS (cf.
+  // run-alerts.ts pour la même remarque).
+  const tenants = await asSystem(
+    'refresh-valuations: découverte des tenants actifs pour recalcul planifié',
+    (client) =>
+      client.tenant.findMany({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          ...(target ? { name: { contains: target, mode: 'insensitive' as const } } : {}),
+        },
+        select: { id: true, name: true },
+      })
+  );
 
   if (tenants.length === 0) {
     console.error('Aucun tenant correspondant.');

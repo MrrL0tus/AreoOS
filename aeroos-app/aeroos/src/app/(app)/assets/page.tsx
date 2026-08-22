@@ -61,7 +61,8 @@ export default async function AssetsPage() {
           </div>
         </div>
         <button className="btn btn-ghost">↓ Export CSV</button>
-        <button className="btn btn-primary">+ Nouvel actif</button>
+        <Link href="/assets/import" className="btn btn-ghost">↑ Import CSV</Link>
+        <Link href="/assets/new" className="btn btn-primary">+ Nouvel actif</Link>
       </div>
 
       <div className="content">

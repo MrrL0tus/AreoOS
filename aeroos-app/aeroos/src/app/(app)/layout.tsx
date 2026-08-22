@@ -4,6 +4,7 @@ import { getSession, logout } from '@/lib/auth';
 import { withTenant } from '@/lib/db';
 import { initials } from '@/lib/format';
 import NavItem from '@/components/NavItem';
+import SessionRenewer from '@/components/SessionRenewer';
 
 export default async function AppLayout({
   children,
@@ -32,6 +33,7 @@ export default async function AppLayout({
 
   return (
     <div className="shell">
+      <SessionRenewer />
       <nav className="sidebar">
         <div className="logo">
           <div className="logo-mark">
@@ -60,6 +62,7 @@ export default async function AppLayout({
         <div className="nav-section">Système</div>
         <NavItem href="/audit" icon="⊙" label="Journal d'audit" />
         <NavItem href="/settings/mfa" icon="⚿" label="Sécurité" />
+        <NavItem href="/settings/password" icon="⚷" label="Mot de passe" />
 
         <div className="sidebar-footer">
           <div className="user-pill">

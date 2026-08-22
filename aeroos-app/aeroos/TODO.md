@@ -164,7 +164,7 @@ multi-instance. Ne pas sur-concevoir.
 
 ---
 
-### [ ] T1.3 — Politique de mot de passe et changement ⚡
+### [x] T1.3 — Politique de mot de passe et changement ⚡
 
 **Fichiers.**
 - `src/lib/auth.ts` — `validatePassword()` existe déjà, le renforcer
@@ -183,7 +183,7 @@ courants (liste embarquée).
 
 ---
 
-### [ ] T1.4 — Renouvellement de session
+### [x] T1.4 — Renouvellement de session
 
 **Contexte.** Les sessions durent 15 minutes. Sans renouvellement,
 l'utilisateur est déconnecté en pleine saisie.
@@ -205,7 +205,7 @@ intervalle côté client.
 > Objectif : passer de « lecture seule » à « un lessor peut vraiment
 > l'utiliser ». C'est la phase la plus longue.
 
-### [ ] T2.1 — Formulaire de création/édition d'actif
+### [x] T2.1 — Formulaire de création/édition d'actif
 
 **Contexte.** Aujourd'hui les actifs viennent uniquement du seed. Sans ce
 formulaire, la plateforme est une démo.
@@ -236,7 +236,7 @@ cabinConfig, seatCount, mtowKg, cofaExpiryDate, insuranceExpiryDate
 
 ---
 
-### [ ] T2.2 — Formulaire de contrat + rattachement moteurs
+### [x] T2.2 — Formulaire de contrat + rattachement moteurs
 
 **Fichiers.**
 - `src/app/(app)/contracts/new/page.tsx` (nouveau)
@@ -264,7 +264,7 @@ sur toute la durée du contrat avec statut `SCHEDULED`.
 
 ---
 
-### [ ] T2.3 — Enregistrement des paiements ⚡
+### [x] T2.3 — Enregistrement des paiements ⚡
 
 **Fichiers.**
 - `src/app/(app)/contracts/[id]/page.tsx` — action sur chaque ligne
@@ -285,7 +285,7 @@ sur toute la durée du contrat avec statut `SCHEDULED`.
 
 ---
 
-### [ ] T2.4 — Import CSV/Excel
+### [x] T2.4 — Import CSV/Excel
 
 **Contexte.** Objectif produit : onboarder un portefeuille en moins de
 30 minutes. C'est impossible en saisie manuelle.
@@ -320,7 +320,7 @@ risque n°1 identifié (les lessors ont des données en désordre) :
 
 ---
 
-### [ ] T2.5 — Upload de documents
+### [x] T2.5 — Upload de documents
 
 **Contexte.** Le modèle `Document` existe, le stockage non.
 
@@ -351,7 +351,7 @@ développer sans compte cloud.
 
 ---
 
-### [ ] T2.6 — Recherche full-text ⚡
+### [x] T2.6 — Recherche full-text ⚡
 
 **Contexte.** PostgreSQL `tsvector` suffit largement à ce stade.
 
@@ -374,7 +374,7 @@ développer sans compte cloud.
 > Phase 2 terminée — l'IA lit des documents, il faut donc que les
 > documents existent.
 
-### [ ] T3.1 — Pipeline d'extraction de contrat
+### [x] T3.1 — Pipeline d'extraction de contrat
 
 **Contexte.** Le modèle `AiExtraction` et l'écran de validation existent
 déjà. Il manque le pipeline.
@@ -411,9 +411,21 @@ Juridique : `governingLaw`, `hasPurchaseOption`, `sanctionsClause`
 - L'écran `/ai` affiche les champs avec leur confiance
 - Aucune donnée n'atteint `LeaseContract` sans validation
 
+**Note (2026-08-22).** `ANTHROPIC_API_KEY` n'est pas configuré dans cet
+environnement — impossible de tester un appel réel à `claude-opus-5`.
+Vérifié à la place : le pipeline complet jusqu'à l'appel API (upload PDF
+→ extraction texte → sélection document → route → SDK) fonctionne et
+échoue proprement (erreur SDK claire renvoyée à l'écran, aucune écriture
+partielle en base) quand les identifiants manquent. À tester en conditions
+réelles dès qu'une clé est disponible — en particulier la qualité de
+`sourcePage` (dépend des marqueurs de page insérés par pdf-parse dans le
+texte) et le format de sortie structuré (JSON Schema brut, pas
+`zodOutputFormat` — ce projet est sur zod v3, le helper du SDK exige
+zod v4 en interne, cf. lib/ai/extract-contract.ts).
+
 ---
 
-### [ ] T3.2 — Validation et écriture des extractions
+### [x] T3.2 — Validation et écriture des extractions
 
 **Fichiers.**
 - `src/lib/actions/ai-validation.ts` (nouveau)
@@ -434,7 +446,7 @@ Juridique : `governingLaw`, `hasPurchaseOption`, `sanctionsClause`
 
 ---
 
-### [ ] T3.3 — Résumé de rapport technique ⚡
+### [x] T3.3 — Résumé de rapport technique ⚡
 
 **Contexte.** Condenser un rapport de shop visit de 48 pages en une fiche
 d'une page. C'est la fonctionnalité qui crée la surprise en démo.
@@ -450,6 +462,16 @@ peut pas alimenter un calcul réglementaire (conformité §7 D5).
 - Le résumé apparaît sur la fiche document
 - Lien vers le rapport source toujours présent
 - Retour utilisateur (utile / pas utile) enregistré
+
+**Note (2026-08-22).** Comme pour T3.1, `ANTHROPIC_API_KEY` absent dans cet
+environnement — l'appel réel au modèle n'a pas pu être testé. La fiche
+document (`/documents/[id]`, nouvelle — n'existait pas avant cette tâche)
+et le pipeline jusqu'à l'appel API sont vérifiés : déclenchement, échec
+propre sans écriture partielle, affichage structuré (testé en simulant un
+résultat via UPDATE SQL direct), retour utile/pas utile persisté et
+audité. À tester en conditions réelles avec une vraie clé — en particulier
+la pertinence du texte narratif et la fiabilité des champs numériques
+(EGT margin, LLP, coûts) sur un vrai rapport de shop visit long.
 
 ---
 

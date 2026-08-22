@@ -2,6 +2,8 @@ import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { withTenant } from '@/lib/db';
 import { date } from '@/lib/format';
+import AnalyzeDocumentPanel from './AnalyzeDocumentPanel';
+import ExtractionCard from './ExtractionCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,21 +20,45 @@ interface ExtractedField {
   sourcePage?: number;
 }
 
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export default async function AiPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const extractions = await withTenant(session.tenantId, (tx) =>
-    tx.aiExtraction.findMany({
-      where: { deletedAt: null },
-      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-      take: 20,
-      include: {
-        document: { select: { title: true, category: true } },
-        validatedBy: { select: { firstName: true, lastName: true } },
-      },
-    })
-  );
+  const { extractions, documentOptions, aircraftOptions, operatorOptions } =
+    await withTenant(session.tenantId, async (tx) => {
+      const [extractions, documentOptions, aircraftOptions, operatorOptions] =
+        await Promise.all([
+          tx.aiExtraction.findMany({
+            where: { deletedAt: null },
+            orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+            take: 20,
+            include: {
+              document: { select: { title: true, category: true } },
+              validatedBy: { select: { firstName: true, lastName: true } },
+            },
+          }),
+          tx.document.findMany({
+            where: { deletedAt: null, category: 'CONTRACT', extractedText: { not: null } },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, title: true },
+          }),
+          tx.aircraft.findMany({
+            where: { deletedAt: null },
+            orderBy: { msn: 'asc' },
+            select: { id: true, msn: true },
+          }),
+          tx.operator.findMany({
+            where: { deletedAt: null, isActive: true },
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true, sanctionsStatus: true },
+          }),
+        ]);
+      return { extractions, documentOptions, aircraftOptions, operatorOptions };
+    });
 
   const pending = extractions.filter((e) => e.status === 'PENDING');
 
@@ -45,7 +71,7 @@ export default async function AiPage() {
             {pending.length} extraction(s) en attente de validation humaine
           </div>
         </div>
-        <button className="btn btn-primary">Analyser un document</button>
+        <AnalyzeDocumentPanel documentOptions={documentOptions} />
       </div>
 
       <div className="content">
@@ -59,25 +85,41 @@ export default async function AiPage() {
 
         {extractions.length === 0 ? (
           <div className="card">
-            <div className="empty">
-              Aucune extraction.
-              <br />
-              <span style={{ fontSize: 11.5 }}>
-                Le pipeline d&apos;extraction reste à implémenter — voir README
-                §Prochaines étapes.
-              </span>
-            </div>
+            <div className="empty">Aucune extraction.</div>
           </div>
         ) : (
           extractions.map((e) => {
-            const st = STATUS_LABELS[e.status] ?? {
-              label: e.status,
-              tone: 'gray',
-            };
-            const fields = (e.extractedFields ?? {}) as Record<
-              string,
-              ExtractedField
-            >;
+            const fields = (e.extractedFields ?? {}) as Record<string, ExtractedField>;
+
+            if (e.status === 'PENDING') {
+              const msn = typeof fields.msn?.value === 'string' ? fields.msn.value : '';
+              const lesseeName =
+                typeof fields.lesseeName?.value === 'string' ? fields.lesseeName.value : '';
+              const matchedAircraft = msn
+                ? aircraftOptions.find((a) => normalize(a.msn) === normalize(msn))
+                : undefined;
+              const matchedOperator = lesseeName
+                ? operatorOptions.find((o) => normalize(o.name) === normalize(lesseeName))
+                : undefined;
+
+              return (
+                <ExtractionCard
+                  key={e.id}
+                  extractionId={e.id}
+                  documentTitle={e.document.title}
+                  modelLabel={`${e.modelName}${e.modelVersion ? ` · ${e.modelVersion}` : ''}`}
+                  createdAt={e.createdAt}
+                  overallConfidence={e.overallConfidence}
+                  fields={fields}
+                  aircraftOptions={aircraftOptions}
+                  operatorOptions={operatorOptions}
+                  initialAircraftId={matchedAircraft?.id ?? ''}
+                  initialLesseeId={matchedOperator?.id ?? ''}
+                />
+              );
+            }
+
+            const st = STATUS_LABELS[e.status] ?? { label: e.status, tone: 'gray' };
             const entries = Object.entries(fields).slice(0, 8);
 
             return (
@@ -138,33 +180,12 @@ export default async function AiPage() {
                   })
                 )}
 
-                {e.status === 'PENDING' ? (
-                  <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                    <button className="btn btn-primary">
-                      ✓ Valider et enregistrer
-                    </button>
-                    <button className="btn btn-ghost">Corriger</button>
-                    <button
-                      className="btn btn-ghost"
-                      style={{ color: 'var(--red)' }}
-                    >
-                      Rejeter
-                    </button>
+                {e.validatedBy && (
+                  <div style={{ marginTop: 12, fontSize: 10.5, color: 'var(--text-3)' }}>
+                    {e.status === 'REJECTED' ? 'Rejetée' : 'Validée'} par{' '}
+                    {e.validatedBy.firstName} {e.validatedBy.lastName}
+                    {e.validatedAt ? ` le ${date(e.validatedAt)}` : ''}
                   </div>
-                ) : (
-                  e.validatedBy && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        fontSize: 10.5,
-                        color: 'var(--text-3)',
-                      }}
-                    >
-                      Validée par {e.validatedBy.firstName}{' '}
-                      {e.validatedBy.lastName}
-                      {e.validatedAt ? ` le ${date(e.validatedAt)}` : ''}
-                    </div>
-                  )
                 )}
               </div>
             );

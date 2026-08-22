@@ -20,9 +20,17 @@ import bcrypt from 'bcryptjs';
 import { withTenant, audit, asSystem } from './db';
 import { verifyToken as verifyTotpToken, matchRecoveryCode } from './mfa';
 import { checkLoginRateLimit, recordFailedLogin, resetLoginRateLimit } from './ratelimit';
+import { isCommonPassword } from './common-passwords';
 import type { UserRole } from '@prisma/client';
 
 const COOKIE_NAME = 'aeroos_session';
+
+// Fenêtre glissante : le cookie expire s'il n'est pas renouvelé (cf.
+// renewSession()). Plafond absolu : même renouvelée en continu, une
+// session ne dépasse jamais cette durée depuis la connexion initiale
+// (cf. T1.4 — évite qu'un cookie volé reste valide indéfiniment).
+const SLIDING_SESSION_SECONDS = Number(process.env.SESSION_MAX_AGE_SECONDS ?? 900);
+const ABSOLUTE_SESSION_SECONDS = 12 * 3600;
 
 function getSecret(): Uint8Array {
   const secret = process.env.AUTH_SECRET;
@@ -46,6 +54,9 @@ export interface SessionPayload {
   role: UserRole;
   firstName: string;
   lastName: string;
+  /** Horodatage (secondes epoch) de la connexion initiale — fixe à
+   *  travers les renouvellements, sert de base au plafond absolu. */
+  sessionStart: number;
   [key: string]: unknown;
 }
 
@@ -188,6 +199,7 @@ export async function login(
     role: user.role,
     firstName: user.firstName,
     lastName: user.lastName,
+    sessionStart: Math.floor(Date.now() / 1000),
   };
 
   await createSessionCookie(session);
@@ -288,6 +300,7 @@ export async function completeMfaLogin(
     role: user.role,
     firstName: user.firstName,
     lastName: user.lastName,
+    sessionStart: Math.floor(Date.now() / 1000),
   };
 
   await createSessionCookie(session);
@@ -336,12 +349,10 @@ export async function logout(): Promise<void> {
 // ─────────────────────────────────────────────────────────────────
 
 async function createSessionCookie(payload: SessionPayload): Promise<void> {
-  const hours = Number(process.env.AUTH_SESSION_HOURS ?? 8);
-
   const token = await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime(`${hours}h`)
+    .setExpirationTime(`${SLIDING_SESSION_SECONDS}s`)
     .setIssuer('aeroos')
     .sign(getSecret());
 
@@ -351,7 +362,7 @@ async function createSessionCookie(payload: SessionPayload): Promise<void> {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: hours * 3600,
+    maxAge: SLIDING_SESSION_SECONDS,
   });
 }
 
@@ -365,7 +376,35 @@ export async function getSession(): Promise<SessionPayload | null> {
       issuer: 'aeroos',
     });
 
-    return payload as unknown as SessionPayload;
+    const session = payload as unknown as SessionPayload;
+
+    // Plafond absolu (T1.4) : même renouvelée à chaque requête, une
+    // session ne doit jamais dépasser cette durée depuis la connexion
+    // initiale. Un token émis avant l'introduction de sessionStart n'a
+    // pas cette réclamation — traité comme expiré, il force une
+    // reconnexion propre plutôt que d'échapper au contrôle.
+    if (
+      typeof session.sessionStart !== 'number' ||
+      Date.now() / 1000 - session.sessionStart > ABSOLUTE_SESSION_SECONDS
+    ) {
+      return null;
+    }
+
+    // Un changement de mot de passe doit invalider les sessions émises
+    // avant lui, y compris sur d'autres appareils — le token JWT étant
+    // sans état, on compare son horodatage d'émission (iat) à la date
+    // du dernier changement, connue seulement en base.
+    const user = await withTenant(session.tenantId, (tx) =>
+      tx.user.findFirst({
+        where: { id: session.userId, deletedAt: null },
+        select: { passwordChangedAt: true },
+      })
+    );
+    if (!user || !payload.iat || payload.iat * 1000 < user.passwordChangedAt.getTime()) {
+      return null;
+    }
+
+    return session;
   } catch {
     return null;
   }
@@ -381,6 +420,20 @@ export async function requireSession(): Promise<SessionPayload> {
     throw new UnauthorizedError('Session requise');
   }
   return session;
+}
+
+/**
+ * Renouvelle le cookie de session (fenêtre glissante) si la session en
+ * cours est valide — appelé par POST /api/auth/refresh, sur ping du
+ * client tant que l'utilisateur est actif. sessionStart est repris tel
+ * quel : ça n'étend jamais la session au-delà du plafond absolu, déjà
+ * contrôlé dans getSession().
+ */
+export async function renewSession(): Promise<{ renewed: boolean }> {
+  const session = await getSession();
+  if (!session) return { renewed: false };
+  await createSessionCookie(session);
+  return { renewed: true };
 }
 
 /**
@@ -435,20 +488,119 @@ export async function hashPassword(plain: string): Promise<string> {
 }
 
 /**
- * Politique de mot de passe (cf. checklist conformité S1)
+ * Politique de mot de passe (cf. checklist conformité S1) : 12 caractères
+ * minimum, au moins 3 des 4 classes de caractères, refus des mots de
+ * passe les plus courants.
  */
 export function validatePassword(pwd: string): { ok: boolean; error?: string } {
   if (pwd.length < 12) {
     return { ok: false, error: 'Minimum 12 caractères' };
   }
-  if (!/[A-Z]/.test(pwd)) {
-    return { ok: false, error: 'Au moins une majuscule requise' };
+
+  const classes = [
+    /[A-Z]/.test(pwd),
+    /[a-z]/.test(pwd),
+    /[0-9]/.test(pwd),
+    /[^A-Za-z0-9]/.test(pwd),
+  ].filter(Boolean).length;
+
+  if (classes < 3) {
+    return {
+      ok: false,
+      error: 'Au moins 3 catégories requises parmi : majuscules, minuscules, chiffres, symboles',
+    };
   }
-  if (!/[a-z]/.test(pwd)) {
-    return { ok: false, error: 'Au moins une minuscule requise' };
+
+  if (isCommonPassword(pwd)) {
+    return { ok: false, error: 'Ce mot de passe est trop courant' };
   }
-  if (!/[0-9]/.test(pwd)) {
-    return { ok: false, error: 'Au moins un chiffre requis' };
-  }
+
   return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Changement de mot de passe
+// ─────────────────────────────────────────────────────────────────
+
+export interface ChangePasswordResult {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Change le mot de passe de l'utilisateur actuellement connecté.
+ * Invalide toutes les sessions existantes (y compris les autres
+ * appareils) via passwordChangedAt — cf. getSession(). La session en
+ * cours est immédiatement remplacée par un cookie fraîchement émis.
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  meta: { ipAddress?: string; userAgent?: string } = {}
+): Promise<ChangePasswordResult> {
+  const session = await requireSession();
+
+  const user = await withTenant(session.tenantId, (tx) =>
+    tx.user.findFirst({
+      where: { id: session.userId, deletedAt: null },
+    })
+  );
+  if (!user) {
+    return { success: false, error: 'Utilisateur introuvable' };
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) {
+    await audit({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      userEmail: session.email,
+      action: 'UPDATE',
+      resourceType: 'User',
+      resourceId: session.userId,
+      result: 'DENIED',
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+      metadata: { field: 'passwordHash', reason: 'current_password_invalid' },
+    });
+    return { success: false, error: 'Mot de passe actuel incorrect' };
+  }
+
+  const check = validatePassword(newPassword);
+  if (!check.ok) {
+    return { success: false, error: check.error };
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  // Tronqué à la seconde : le JWT (iat) a une précision à la seconde, et
+  // la comparaison dans getSession() doit voir le cookie réémis juste
+  // après comme au moins aussi récent que ce changement.
+  const passwordChangedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+
+  await withTenant(session.tenantId, (tx) =>
+    tx.user.update({
+      where: { id: session.userId },
+      data: { passwordHash, passwordChangedAt },
+    })
+  );
+
+  await audit({
+    tenantId: session.tenantId,
+    userId: session.userId,
+    userEmail: session.email,
+    action: 'UPDATE',
+    resourceType: 'User',
+    resourceId: session.userId,
+    result: 'SUCCESS',
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+    metadata: { field: 'passwordHash' },
+  });
+
+  // Réémet un cookie pour l'appareil courant : sans ça, la vérification
+  // passwordChangedAt dans getSession() déconnecterait aussi l'utilisateur
+  // qui vient de changer son mot de passe.
+  await createSessionCookie(session);
+
+  return { success: true };
 }

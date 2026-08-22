@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Prisma doit rester externe au bundle serveur
-  serverExternalPackages: ['@prisma/client', 'bcryptjs'],
+  // Prisma doit rester externe au bundle serveur. pdf-parse (+ ses
+  // dépendances pdfjs-dist / @napi-rs/canvas) casse le bundling webpack
+  // ("Object.defineProperty called on non-object") si on ne l'exclut pas.
+  serverExternalPackages: ['@prisma/client', 'bcryptjs', 'pdf-parse'],
   async headers() {
     return [{
       source: '/:path*',

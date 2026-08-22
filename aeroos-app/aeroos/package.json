@@ -23,6 +23,7 @@
     "valuation:refresh": "tsx scripts/refresh-valuations.ts",
     "sanctions:import": "tsx scripts/import-sanctions-list.ts",
     "sanctions:screen": "tsx scripts/screen-operators.ts",
+    "retention:purge": "tsx scripts/retention-purge.ts",
     "test:isolation": "tsx scripts/test-tenant-isolation.ts"
   },
   "prisma": {

@@ -477,7 +477,7 @@ la pertinence du texte narratif et la fiabilité des champs numériques
 
 ## PHASE 4 — Conformité opérationnelle
 
-### [ ] T4.1 — Screening des sanctions
+### [x] T4.1 — Screening des sanctions
 
 **Contexte.** Exigence §5.3 du cahier de conformité. Aucun contrat ne doit
 pouvoir être enregistré avec une contrepartie bloquée.
@@ -504,9 +504,30 @@ pouvoir être enregistré avec une contrepartie bloquée.
 - La création de contrat est refusée pour un locataire bloqué
 - L'historique des screenings est consultable
 
+**Note (2026-08-22).** Le code (screenName/screenOperator, scripts
+sanctions:import et sanctions:screen) était déjà en place depuis le commit
+précédent mais la case n'avait pas été cochée et les critères
+d'acceptation n'avaient pas été vérifiés bout en bout. Vérifié cette
+session : import de `prisma/sanctions/sdn-sample.csv` (8 entités
+fictives) ; `npm run sanctions:screen -- meridian` sur la flotte démo
+→ 6/6 `CLEAR` (aucune correspondance, normal avec des noms fictifs) ;
+test de blocage en insérant temporairement une entité sanctionnée nommée
+exactement comme l'opérateur démo « Iberavia », re-screening →
+`CLEAR → BLOCKED` (similarité 100 %), badge « bloqué » désormais affiché
+sur `/assets` pour les appareils loués à Iberavia, entrée d'audit
+`UPDATE`/`Operator` avec l'entité correspondante tracée ; contrat de
+test refusé côté `src/lib/actions/contract.ts` (`sanctions_blocked`) et
+côté `src/lib/actions/ai-validation.ts`. Entité de test et statut
+d'Iberavia nettoyés après vérification (re-screening → `CLEAR`, aucune
+donnée de démo laissée dans un état incohérent). `npm run typecheck`,
+`npm run build` et `npm run test:isolation` (14/14) passent.
+Pas d'écran de révision manuelle des `FLAGGED`/`BLOCKED` — lecture seule
+pour l'instant, hors périmètre explicite de T4.1 (cf. commentaire en tête
+de `src/lib/compliance/sanctions.ts`).
+
 ---
 
-### [ ] T4.2 — Export et effacement RGPD ⚡
+### [x] T4.2 — Export et effacement RGPD ⚡
 
 **Contexte.** Articles 15 et 17 du RGPD. Délai légal : 30 jours.
 
@@ -529,9 +550,40 @@ l'utilisateur : profil, entrées d'audit, actions.
 - L'anonymisation ne casse aucune intégrité référentielle
 - Le journal d'audit reste exploitable après anonymisation
 
+**Note (2026-08-22).** `GET`/`DELETE /api/admin/export-user-data?userId=…`
+(réservé ADMIN, `requireRole('ADMIN')`). Vérifié bout en bout sur le
+serveur de dev avec une session ADMIN réelle (`admin@meridian-aviation.com`) :
+export d'un utilisateur de seed (JSON complet, sans `passwordHash` ni
+secrets MFA) ; un rôle ANALYST reçoit 403 ; `userId` manquant → 400 ;
+utilisateur inconnu → 404. Effacement testé sur un utilisateur jetable
+créé pour l'occasion (avec un `AssetEvent` lié) : anonymisation appliquée
+(`email`/`firstName`/`lastName`/`passwordHash`/`deletedAt`), l'`AssetEvent`
+pointe toujours vers le même `id` (intégrité référentielle intacte), une
+tentative de connexion avec l'ancien mot de passe échoue immédiatement
+(`deletedAt` revérifié par `getSession()` à chaque requête → coupe aussi
+les sessions déjà ouvertes, sans mécanisme dédié), un second effacement
+renvoie 409, `reason` obligatoire dans la requête. Fixture de test
+purgée physiquement après vérification (pas une donnée métier réelle).
+
+**Écart documenté vs. l'énoncé.** « Les entrées d'audit conservent
+`userId` mais perdent `userEmail` » n'est **pas** implémenté à la lettre :
+`audit_logs` est rendu immuable au niveau base (`FORCE ROW LEVEL
+SECURITY` + trigger `reject_audit_mutation` qui rejette tout UPDATE/DELETE,
+cf. `prisma/rls.sql`), donc aucune entrée passée n'est modifiable — même
+via `asSystem()`, qui contourne le RLS mais pas les triggers. C'est
+cohérent avec CLAUDE.md §5 (« le journal d'audit ne doit jamais être
+modifié ») et avec T4.3 ci-dessous (rétention 7 ans, jamais purgé). Les
+entrées d'audit gardent donc l'e-mail réel tel qu'il était au moment des
+faits ; c'est une exemption RGPD standard pour les logs de sécurité/
+conformité (art. 17§3-b). Documenté dans le commentaire d'en-tête de
+`src/lib/gdpr.ts`. Si une vraie purge rétroactive de `userEmail` s'avère
+un jour requise légalement, elle devra être un acte DBA délibéré hors de
+ce code applicatif (désactivation ponctuelle et tracée du trigger), pas
+une conséquence silencieuse d'un effacement RGPD.
+
 ---
 
-### [ ] T4.3 — Purge automatique selon les durées de rétention ⚡
+### [x] T4.3 — Purge automatique selon les durées de rétention ⚡
 
 **Fichiers.** `scripts/retention-purge.ts` (nouveau)
 
@@ -546,6 +598,39 @@ l'utilisateur : profil, entrées d'audit, actions.
 - Le script tourne à blanc (`--dry-run`) par défaut
 - Rapport de ce qui serait purgé
 - Le journal d'audit n'est jamais touché
+
+**Note (2026-08-22).** `npm run retention:purge [-- <slug>] [--execute]` —
+dry-run par défaut sans flag dédié (`--dry-run` serait redondant avec le
+comportement par défaut, qui exige `--execute` pour écrire) ; « purger »
+= `deletedAt` (jamais de suppression physique, cf. CLAUDE.md §2), comme
+toute autre suppression métier dans AeroOS. « Documents techniques »
+interprété comme les catégories `MAINTENANCE`/`INSPECTION`, éligibles
+seulement quand l'actif lié est déjà retiré (`Aircraft.deletedAt`
+renseigné) — pas de durée fixe, conforme à « durée de vie de l'actif ».
+La règle « utilisateurs supprimés : anonymisation après 30 jours » est
+actuellement défensive : le seul chemin de suppression existant (route
+RGPD T4.2) anonymise déjà de façon atomique, donc aucun compte ne se
+retrouve aujourd'hui « supprimé mais pas encore anonymisé » — la règle
+attend une future désactivation de compte qui ne le ferait pas. `eraseUserData()`
+(T4.2) a été généralisée pour être réutilisable par ce script (acteur
+automatisé, pas d'admin humain) ; son critère d'idempotence est passé de
+« `deletedAt` déjà renseigné » à « e-mail déjà anonymisé », ce qui a
+d'ailleurs corrigé un bug latent : avec l'ancien critère, ce script
+n'aurait jamais pu anonymiser un compte déjà `deletedAt` mais pas encore
+anonymisé — précisément le cas qu'il doit traiter.
+
+Vérifié bout en bout avec des fixtures jetables (un paiement à échéance
+2015, un contrat expiré en 2015, un actif retiré avec un document
+`MAINTENANCE`, un compte `deletedAt` vieux de 40 jours et non anonymisé) :
+dry-run détecte les 4 candidats sans écrire (`deletedAt` toujours nul,
+`audit_logs` inchangé à 167 lignes) ; `--execute` purge les 4 (une entrée
+d'audit `DELETE` par ligne, 167 → 171, jamais de lecture ni modification
+de `audit_logs` lui-même) ; le compte est anonymisé avec son `deletedAt`
+d'origine préservé (pas écrasé par la date du run) ; une seconde exécution
+`--execute` ne retrouve plus aucun candidat (idempotent). Fixtures
+purgées physiquement après vérification (pas des données métier réelles).
+`npm run typecheck`, `npm run build` et `npm run test:isolation` (14/14)
+passent.
 
 ---
 

@@ -17,7 +17,9 @@ import type { NextRequest } from 'next/server';
 // (elle vérifie elle-même un challengeToken à courte durée de vie).
 // Le cas "confirmation d'activation" du même endpoint vérifie sa propre
 // session via getSession() côté handler.
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/mfa/verify'];
+// /api/health (T5.3) : sonde consultée par un load balancer/orchestrateur,
+// jamais par un utilisateur — pas de cookie de session à présenter.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/mfa/verify', '/api/health'];
 const COOKIE_NAME = 'aeroos_session';
 
 export function middleware(request: NextRequest) {

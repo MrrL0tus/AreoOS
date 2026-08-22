@@ -102,7 +102,9 @@ export async function login(
     // comme pour le cas "compte inexistant" ci-dessous, on ne peut pas
     // écrire d'entrée d'audit sans tenantId.
     const maybeUser = await asSystem(
-      `login: vérification du rate-limit pour ${normalizedEmail}`,
+      // Jamais l'e-mail dans la raison — asSystem() la journalise
+      // (cf. CLAUDE.md règle 6 / conformité §7 D4).
+      'login: vérification du rate-limit pour une tentative de connexion',
       (client) =>
         client.user.findFirst({
           where: { email: normalizedEmail, deletedAt: null },
@@ -133,7 +135,8 @@ export async function login(
 
   // Recherche hors RLS : on ne connaît pas encore le tenant
   const user = await asSystem(
-    `login: recherche de l'utilisateur ${normalizedEmail} avant connaissance du tenant`,
+    // Idem : pas d'e-mail dans la raison journalisée.
+    "login: recherche d'un utilisateur par e-mail avant connaissance du tenant",
     (client) =>
       client.user.findFirst({
         where: { email: normalizedEmail, isActive: true, deletedAt: null },

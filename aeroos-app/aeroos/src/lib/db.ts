@@ -14,6 +14,8 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { logger } from './logger';
+import { captureException } from './error-tracking';
 
 // ─────────────────────────────────────────────────────────────────
 // Singleton Prisma (évite l'épuisement du pool en dev avec HMR)
@@ -110,7 +112,7 @@ export async function asSystem<T>(
       'asSystem() désactivé en production sans ALLOW_SYSTEM_ACCESS'
     );
   }
-  console.warn(`[SYSTEM ACCESS] ${reason}`);
+  logger.warn({ event: 'system_access' }, reason);
   return fn(getSystemPrisma());
 }
 
@@ -165,7 +167,15 @@ export async function audit(entry: AuditEntry): Promise<void> {
       })
     );
   } catch (err) {
-    console.error('[AUDIT FAILURE]', err, entry);
+    // Ne jamais journaliser `entry` tel quel : il porte `userEmail`.
+    captureException(err, {
+      event: 'audit_write_failure',
+      tenantId: entry.tenantId,
+      userId: entry.userId,
+      action: entry.action,
+      resourceType: entry.resourceType,
+      resourceId: entry.resourceId,
+    });
   }
 }
 

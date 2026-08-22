@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: aeroos-app/aeroos
+
+env:
+  # Rôle applicatif (RLS appliqué) — cf. .env.example
+  DATABASE_URL: "postgresql://aeroos_app:ci_app_password@localhost:5432/aeroos?schema=public"
+  # Rôle superuser — migrations, RLS, création des tenants de test
+  ADMIN_DATABASE_URL: "postgresql://aeroos:ci_admin_password@localhost:5432/aeroos?schema=public"
+  # Rôle applicatif BYPASSRLS — asSystem() (ex. login() avant connaissance du tenant)
+  SYSTEM_DATABASE_URL: "postgresql://aeroos_system:ci_system_password@localhost:5432/aeroos?schema=public"
+  AUTH_SECRET: "ci-only-secret-not-for-production-min-32-chars"
+  NODE_ENV: "test"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aeroos
+          POSTGRES_PASSWORD: ci_admin_password
+          POSTGRES_DB: aeroos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aeroos -d aeroos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: aeroos-app/aeroos/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Générer le client Prisma
+        run: npx prisma generate
+
+      # Les rôles aeroos_app / aeroos_system ne sont pas gérés par Prisma
+      # (cf. .env.example) — créés ici comme documenté pour le dev local,
+      # avec des mots de passe propres à ce run de CI.
+      - name: Créer les rôles Postgres applicatifs
+        env:
+          PGPASSWORD: ci_admin_password
+        run: |
+          psql "postgresql://aeroos@localhost:5432/aeroos" <<'SQL'
+          CREATE ROLE aeroos_app WITH LOGIN PASSWORD 'ci_app_password' NOSUPERUSER NOBYPASSRLS;
+          GRANT CONNECT ON DATABASE aeroos TO aeroos_app;
+          GRANT USAGE ON SCHEMA public TO aeroos_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO aeroos_app;
+
+          CREATE ROLE aeroos_system WITH LOGIN PASSWORD 'ci_system_password' NOSUPERUSER BYPASSRLS;
+          GRANT CONNECT ON DATABASE aeroos TO aeroos_system;
+          GRANT USAGE ON SCHEMA public TO aeroos_system;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO aeroos_system;
+          SQL
+
+      # Migrations : rôle superuser (aeroos_app n'a pas les privilèges DDL,
+      # cf. mémoire projet — décision D-sécurité, pas un oubli).
+      - name: Appliquer les migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.ADMIN_DATABASE_URL }}
+
+      # Les GRANT ci-dessus ne portent que sur les tables déjà présentes
+      # au moment du GRANT — accorder explicitement sur les tables que
+      # les migrations viennent de créer.
+      - name: Accorder les privilèges sur les tables migrées
+        env:
+          PGPASSWORD: ci_admin_password
+        run: |
+          psql "postgresql://aeroos@localhost:5432/aeroos" <<'SQL'
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aeroos_app;
+          GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO aeroos_app;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aeroos_system;
+          GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO aeroos_system;
+          SQL
+
+      - name: Appliquer les politiques RLS
+        run: psql "$DATABASE_URL" -f prisma/rls.sql
+        env:
+          DATABASE_URL: ${{ env.ADMIN_DATABASE_URL }}
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests (unitaires + intégration, couverture)
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build

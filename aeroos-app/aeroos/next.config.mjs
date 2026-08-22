@@ -4,7 +4,10 @@ const nextConfig = {
   // Prisma doit rester externe au bundle serveur. pdf-parse (+ ses
   // dépendances pdfjs-dist / @napi-rs/canvas) casse le bundling webpack
   // ("Object.defineProperty called on non-object") si on ne l'exclut pas.
-  serverExternalPackages: ['@prisma/client', 'bcryptjs', 'pdf-parse'],
+  // pino/pino-pretty utilisent un transport à base de worker thread
+  // (résolution de module par chemin de fichier) qui casse s'il est
+  // rebundlé par webpack — même famille de problème que pdf-parse.
+  serverExternalPackages: ['@prisma/client', 'bcryptjs', 'pdf-parse', 'pino', 'pino-pretty', '@sentry/node'],
   async headers() {
     return [{
       source: '/:path*',

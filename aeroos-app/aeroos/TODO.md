@@ -636,7 +636,7 @@ passent.
 
 ## PHASE 5 — Préparation à la production
 
-### [ ] T5.1 — Tests automatisés
+### [x] T5.1 — Tests automatisés
 
 **Priorité de couverture :**
 1. `lib/valuation.ts` — cas limites : avion très ancien, heures nulles,
@@ -649,9 +649,91 @@ passent.
 
 **Acceptation.** `npm test` passe, couverture > 60 % sur `src/lib/`.
 
+**Note (2026-08-22).** `vitest` + `@vitest/coverage-v8` installés.
+`npm test` (151 tests, 18 fichiers) et `npm run test:coverage` passent :
+**64.87 % lignes / 63.43 % instructions** sur `src/lib/` — au-dessus du
+seuil. Détail :
+
+- **T5.1.1 (valuation.ts, priorité 1)** — 93.75 % lignes : type connu vs
+  générique (référentiel absent → confiance dégradée), avion tout juste
+  livré vs très ancien (plafonné à la valeur plancher, projection
+  au-delà de la vie économique), heures/cycles nuls (aucun ajustement,
+  note explicite), LLP critique, AD ouvertes, visite lourde en retard,
+  marché déprimé, mention de non-certification systématique,
+  `buildValueCurve`.
+- **T5.1.2 (alerts.ts, priorité 2)** — 98.55 % lignes, **test
+  d'intégration réel** (`alerts.integration.test.ts`, tenant Postgres
+  jetable créé/détruit par test — jamais le tenant Meridian) : les 9
+  fonctions de règle (expiration contrat, impayés, assurance, certificats,
+  documents, maintenance, concentration, seuils LLP, sanctions) déclenchent
+  chacune leur `AlertType` ; idempotence vérifiée sur un second passage
+  (0 créée, 0 résolue) ; résolution automatique vérifiée en levant la
+  condition d'une alerte (paiement marqué reçu) sans toucher aux autres.
+- **T5.1.3 (isolation tenant, priorité 3)** — intégrée à `npm test` via
+  `tenant-isolation.integration.test.ts`, qui lance `npm run
+  test:isolation` en sous-processus plutôt que de dupliquer sa logique en
+  assertions vitest : ce script reste la seule source de vérité du test
+  de sécurité le plus important du projet, jamais réécrit en parallèle.
+- **T5.1.4 (import CSV, priorité 4)** — 98.9 % lignes : formats de date
+  multiples (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY` désambiguïsé),
+  nombres avec espaces/virgules/points, colonnes manquantes (erreur
+  ciblée, jamais d'exception), une ligne en erreur n'empêche pas les
+  autres, template CSV ré-important sans erreur. Une limite réelle de
+  `guessColumnMapping()` a été découverte en écrivant les tests (pas
+  corrigée, hors périmètre T5.1) : `normalizeName()`-style stripping
+  n'est PAS un repli d'accents — un en-tête accentué non listé
+  explicitement dans les alias (ex. « Modèle ») n'est pas reconnu ;
+  testé comme comportement documenté plutôt que silencieusement ignoré.
+
+**Complément au-delà du périmètre listé**, pour dépasser confortablement
+60 % sur l'ensemble de `src/lib/` (525 + 655 lignes de valuation/alerts
+ne suffisaient pas à eux seuls) : `format.ts`, `ratelimit.ts`,
+`common-passwords.ts`, `mfa.ts` (TOTP réel via `otplib`), `db.ts`
+(`isUuid`/`serializeDecimals`), `storage.ts` + `storage/local.ts`
+(signature HMAC, expiration, anti-évasion de chemin — un test a
+d'ailleurs révélé que `resolveSafePath()` neutralise silencieusement les
+segments `..` plutôt que de rejeter explicitement, comportement testé
+tel quel), `contract-activation.ts`, `validation/{aircraft,contract,payment}.ts`
+(schémas Zod), `compliance/sanctions.ts` (`normalizeName`/`similarity`/
+`screenName`, régression de T4.1) — tous à 95-100 % de couverture — plus
+deux tests d'intégration supplémentaires : `gdpr.integration.test.ts`
+(régression automatisée de la vérification manuelle T4.2 : export sans
+secrets, anonymisation, intégrité référentielle, idempotence,
+`deletedAt` d'origine préservé) et `auth.integration.test.ts` (login,
+`getSession`, hiérarchie `requireRole`, rate limit, flux MFA,
+`changePassword` invalidant les autres sessions). Ce dernier fichier
+mocke `next/headers` (`vitest.setup.ts`) pour simuler le cookie de
+session hors runtime Next — deux tests s'y sont révélés sensibles à un
+cas limite réel de `auth.ts` (comparaison `iat` JWT à la seconde près vs
+`passwordChangedAt` à la milliseconde près, cf. commentaires inline) ;
+corrigé côté fixtures de test, pas dans le code applicatif — le cas ne
+se produit en pratique que si connexion et changement de mot de passe
+tombent dans la même seconde.
+
+**Hors périmètre (documenté, pas caché) :**
+- `src/lib/ai/**` et `src/lib/storage/s3.ts` — exclus du calcul de
+  couverture (`vitest.config.ts`) : nécessitent respectivement
+  `ANTHROPIC_API_KEY` (cf. notes T3.1/T3.2) et des identifiants AWS,
+  indisponibles dans cet environnement.
+- `src/lib/actions/**` (0 %) et `src/lib/pdf-extract.ts` (0 %) —
+  non exclus de la mesure (ils comptent donc contre le pourcentage
+  affiché) mais non testés : les Server Actions nécessitent
+  `requireRole()` → `cookies()` en plus d'une manipulation base plus
+  lourde que ce que justifiait le temps disponible ; `pdf-extract.ts`
+  nécessite un vrai buffer PDF. Le seuil de 60 % est atteint malgré ces
+  zones à 0 %, pas en les excluant.
+
+Fichiers ajoutés : `vitest.config.ts`, `vitest.setup.ts`, et un
+`*.test.ts`/`*.integration.test.ts` par module ci-dessus, plus
+`src/lib/__tests__/testTenant.ts` (fixtures de tenant jetable partagées
+par les tests d'intégration, même approche que
+`scripts/test-tenant-isolation.ts` — création/destruction réelles en
+base, jamais le tenant de démo). `npm run typecheck` et `npm run build`
+passent toujours après ajout des dépendances de test.
+
 ---
 
-### [ ] T5.2 — Intégration continue ⚡
+### [x] T5.2 — Intégration continue ⚡
 
 **Fichier.** `.github/workflows/ci.yml`
 
@@ -660,14 +742,105 @@ Postgres pour les tests d'intégration.
 
 **Acceptation.** La CI échoue si le typecheck ou les tests échouent.
 
+**Note (2026-08-22).** Fichier créé à la racine du dépôt git
+(`C:\AreoOS\.github\workflows\ci.yml`), **pas** sous
+`aeroos-app/aeroos/.github/` — GitHub ne découvre les workflows qu'à la
+racine du repo (cf. mémoire projet : le vrai code vit dans le
+sous-dossier `aeroos-app/aeroos/`, mais Git et GitHub Actions raisonnent
+depuis la racine `C:\AreoOS`). Toutes les étapes utilisent
+`working-directory: aeroos-app/aeroos`.
+
+**Pipeline.** checkout → Node 20 → `npm ci` → `prisma generate` →
+création des rôles Postgres applicatifs → `prisma migrate deploy`
+(rôle superuser) → GRANT sur les tables migrées → `psql -f prisma/rls.sql`
+→ `npm run typecheck` → `npm run lint` → `npm run test:coverage` →
+`npm run build`. Service Postgres 16 (conteneur GitHub Actions,
+`postgres:16-alpine`, mêmes identifiants que `docker-compose.yml`).
+
+**Le point délicat identifié en écrivant ce fichier :** ce projet a trois
+rôles Postgres (`aeroos_app` RLS, `aeroos` superuser, `aeroos_system`
+BYPASSRLS — cf. `.env.example` §Base de données) que Prisma ne gère pas ;
+un service Postgres GitHub Actions ne crée que le rôle `POSTGRES_USER`.
+La CI recrée donc `aeroos_app`/`aeroos_system` avec les mêmes `GRANT`
+que `.env.example` documente pour le dev local, dans le même ordre que
+la doc l'exige (rôles → migrations en superuser → `GRANT ... ON ALL
+TABLES` une fois les tables créées → RLS).
+
+**Vérifié réellement, pas seulement relu :** toute la séquence a été
+rejouée en local contre un conteneur Postgres 16 jetable dédié (port
+différent de la base de dev, jamais touchée) — création des deux rôles,
+`prisma migrate deploy` (7 migrations, base vide), `GRANT`, `psql -f
+prisma/rls.sql` (RLS activé + forcé sur les 12 tables tenant-scopées,
+`sanctioned_entities` exclue comme prévu), puis `npm run typecheck`,
+`npm run lint`, `npm test` (151/151) et `npm run build` avec les
+identifiants applicatifs (non-superuser) pointant vers cette base
+fraîche. Tout passe. `npm ci` testé séparément sur le lockfile réel.
+
+**Limite assumée.** Impossible de déclencher un run GitHub Actions réel
+depuis cet environnement (pas d'accès au remote) — la validation
+ci-dessus reproduit fidèlement chaque étape du pipeline en local, mais
+ne remplace pas un vrai run sur `ubuntu-latest`. À confirmer au premier
+push.
+
 ---
 
-### [ ] T5.3 — Journalisation et surveillance ⚡
+### [x] T5.3 — Journalisation et surveillance ⚡
 
 - Logs structurés en JSON (`pino`)
 - Aucune donnée personnelle dans les logs (conformité §7 D4)
 - Endpoint `/api/health` vérifiant la connexion base
 - Suivi des erreurs (Sentry ou équivalent)
+
+**Note (2026-08-22).**
+
+- `src/lib/logger.ts` — pino, JSON en production, `pino-pretty` en dev
+  (désactivé en test : démarrage par worker thread inutile pour 21
+  fichiers de test, cf. commentaire). `redact` configuré comme filet de
+  sécurité (`email`, `password`, `passwordHash`, `mfaSecret`,
+  `mfaRecoveryCodes`, `token`, cookie) — les points d'appel ne doivent de
+  toute façon jamais y passer ces champs.
+- **Fuite réelle trouvée et corrigée en écrivant ce point** (pas un
+  risque théorique) : `asSystem()` journalisait sa raison telle quelle
+  (`console.warn`), et `src/lib/auth.ts` interpolait l'e-mail normalisé
+  dans cette raison à deux endroits de `login()` — observé en clair dans
+  la sortie de test (`[SYSTEM ACCESS] login: recherche de l'utilisateur
+  qa-auth@example.invalid…`) avant correction. Les deux messages ne
+  portent plus que du texte générique. `src/lib/db.ts` : `console.warn`
+  → `logger.warn()` dans `asSystem()` ; le `console.error('[AUDIT
+  FAILURE]', err, entry)` de `audit()` (qui journalisait `entry` en
+  entier, donc `userEmail` inclus) remplacé par `captureException()`
+  avec un sous-ensemble explicite de champs sûrs
+  (`tenantId`/`userId`/`action`/`resourceType`/`resourceId`).
+- `src/lib/error-tracking.ts` — `captureException(error, context)` :
+  log structuré systématique (toujours actif) + envoi à Sentry
+  (`@sentry/node`) si `SENTRY_DSN` est défini, sinon no-op au-delà du
+  log. **Non vérifié en conditions réelles** : pas de `SENTRY_DSN` de
+  développement disponible dans cet environnement (même limite que
+  `ANTHROPIC_API_KEY` pour l'IA, T3.1/T3.2, et les identifiants AWS pour
+  `storage/s3.ts`, T2.5). Le chemin sans Sentry, lui, est exercé par
+  construction à chaque appel — testé (`error-tracking.test.ts`, Sentry
+  mocké : init une seule fois, capture appelée seulement si `SENTRY_DSN`
+  est défini, jamais sinon).
+- `src/app/api/health/route.ts` — `SELECT 1` via le client Prisma
+  applicatif (RLS non pertinent : aucune table tenant-scopée touchée) ;
+  200 `{status:"ok"}` si la base répond, 503 sinon. **Ajouté à
+  `PUBLIC_PATHS` dans `src/middleware.ts`** — sans ça, le garde de
+  session redirigeait `/api/health` vers `/login` (307), ce qui aurait
+  cassé toute sonde d'infrastructure sans cookie. Vérifié en conditions
+  réelles sur le serveur de dev, pas seulement en test : base up → 200
+  `{"status":"ok","database":"up"}` ; `docker stop aeroos-postgres` →
+  503 `{"status":"error","database":"down"}` ; `docker start` → 200 de
+  nouveau.
+- `pino`/`pino-pretty`/`@sentry/node` ajoutés à `serverExternalPackages`
+  (`next.config.mjs`) — même contournement que `pdf-parse` (T2.4/2.5) :
+  leur transport à base de worker thread casse si webpack les rebundle.
+- `LOG_LEVEL` et `SENTRY_DSN` documentés dans `.env.example`, tous deux
+  optionnels.
+
+`npm run typecheck`, `npm test` (158/158, incluant `logger.test.ts` —
+vérifie la censure réelle des champs sensibles via une instance pino
+dédiée écrivant en mémoire — et `error-tracking.test.ts`), `npm run
+lint` et `npm run build` passent.
 
 ---
 
@@ -682,6 +855,63 @@ simple que Vercel + base séparée pour ce type d'application.
 - Sauvegardes automatiques activées et **restauration testée**
 - Variables d'environnement dans le gestionnaire de secrets, jamais dans
   le repo
+
+**Note (2026-08-22) — préparé, pas déployé.** Décision explicite de
+l'utilisateur : pas d'accès à un compte cloud dans cet environnement, et
+provisionner de l'infra réelle (facturable, difficile à annuler) n'est
+pas une action à prendre sans autorisation directe — cf. les points 3 et
+4 ci-dessous, qui exigent un compte réel et ne peuvent donc pas être
+cochés depuis ici. Case laissée décochée : contrairement à T3.1/T3.2/T5.3
+(où le pipeline était vérifiable jusqu'à la limite du secret manquant),
+« Déploiement » n'a de sens que si l'app est réellement déployée — rien
+à côté de ça ne satisfait l'énoncé. Ce qui suit est le runbook à exécuter
+par quelqu'un disposant des accès.
+
+**Ce qui est déjà vérifié et prêt (aucune action supplémentaire requise) :**
+- `npm run build` produit un build de production propre (revérifié à
+  chaque phase de cette session).
+- `/api/health` (T5.3) répond 200 base up / 503 base down — exploitable
+  tel quel comme healthcheck par Railway/Fly.io.
+- `.github/workflows/ci.yml` (T5.2) prouve déjà, à chaque push, que
+  `npm ci && prisma generate && migrate deploy && db:rls && typecheck
+  && lint && test && build` réussit contre un Postgres neuf — c'est
+  exactement la séquence de mise en prod ci-dessous, déjà rejouée avec
+  succès (cf. note T5.2).
+
+**Runbook à suivre (Railway, recommandation retenue) :**
+1. Créer le projet Railway, ajouter un service Postgres 16 managé.
+2. Créer les rôles applicatifs sur cette base managée — **mêmes
+   commandes SQL que `.env.example` documente et que `ci.yml` exécute**
+   (`aeroos_app` NOSUPERUSER NOBYPASSRLS, `aeroos_system` NOSUPERUSER
+   BYPASSRLS), avec des mots de passe de production générés (pas ceux de
+   dev/CI).
+3. Renseigner dans le gestionnaire de secrets Railway (jamais dans le
+   repo) : `DATABASE_URL` (rôle `aeroos_app`), `ADMIN_DATABASE_URL`
+   (rôle superuser managé, pour les migrations/RLS uniquement — pas
+   utilisé au runtime applicatif), `SYSTEM_DATABASE_URL` (rôle
+   `aeroos_system`), `AUTH_SECRET` (**nouveau**, `openssl rand -base64
+   32` — jamais celui de dev), `NODE_ENV=production`, et selon les
+   fonctionnalités activées : `ANTHROPIC_API_KEY`, `STORAGE_DRIVER=s3` +
+   `S3_BUCKET`/`S3_REGION` + les identifiants AWS du driver
+   (`src/lib/storage/s3.ts` — le driver local n'est pas fait pour la
+   prod, cf. T2.5), `SENTRY_DSN`, `LOG_LEVEL=info`.
+4. Déploiement initial : `DATABASE_URL=<ADMIN_DATABASE_URL> npx prisma
+   migrate deploy`, puis `DATABASE_URL=<ADMIN_DATABASE_URL> npm run
+   db:rls` (rôle superuser — les politiques RLS ne sont pas gérées par
+   Prisma, cf. CLAUDE.md). Puis déployer l'app avec les variables du
+   point 3.
+5. Vérifier `GET /api/health` → `200 {"status":"ok","database":"up"}`
+   avant de considérer le déploiement réussi.
+6. **Sauvegardes** : activer les sauvegardes automatiques du Postgres
+   managé (fonctionnalité de la plateforme, pas du code applicatif).
+   Puis — c'est le point qui ne peut pas être coché sans y avoir procédé
+   réellement — **prendre une sauvegarde et la restaurer** dans une base
+   Postgres jetable, revérifier `npm run test:isolation` contre cette
+   base restaurée pour confirmer que les rôles/RLS survivent à une
+   restauration, pas seulement les données.
+7. Après chaque migration future en production : ne jamais oublier
+   `npm run db:rls` (rôle superuser) — les politiques RLS ne sont pas
+   rejouées automatiquement par `prisma migrate deploy`.
 
 ---
 

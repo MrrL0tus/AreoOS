@@ -6,8 +6,41 @@ fichiers concernés, étapes, critères d'acceptation.
 **Convention :** cocher `[x]` une fois les critères d'acceptation vérifiés.
 Ne jamais cocher une tâche dont le `typecheck` ou le `build` échoue.
 
-**Ordre :** les phases sont séquentielles. À l'intérieur d'une phase, les
-tâches marquées ⚡ peuvent être faites en parallèle.
+**Ordre :** les phases 0 à 5 sont séquentielles. À l'intérieur d'une phase,
+les tâches marquées ⚡ peuvent être faites en parallèle.
+
+**Phase 6 — livraison client.** Elle n'attend pas la fin de la Phase 5 :
+T6.3, T6.1 et T6.2 sont bloquantes pour le premier pilote payant. Sans
+elles, aucun client ne peut obtenir de compte ni recevoir de notification.
+
+---
+
+## État d'avancement
+
+*Dernière synchronisation : 30 août 2026*
+
+| Phase | Avancement | Reste |
+|---|---|---|
+| **0 — Mise en route** | ✅ 4/4 | — |
+| **1 — Sécurité** | ✅ 4/4 | — |
+| **2 — Utilisable** | ✅ 6/6 | — |
+| **3 — IA** | ✅ 3/3 | vérification réelle → T6.11 |
+| **4 — Conformité** | ✅ 3/3 | — |
+| **5 — Production** | 🔵 3/4 | T5.4 déploiement (bloqué : accès cloud) |
+| **6 — Livraison client** | ⬜ 0/11 | tout |
+
+**Total : 23 / 36 tâches.** 158 tests passent.
+
+**Ce qui bloque le premier client.** Dans l'ordre :
+1. **T5.4** — l'application n'est déployée nulle part
+2. **T6.3** — aucun e-mail ne peut sortir
+3. **T6.1 / T6.2** — aucun client ne peut obtenir de compte, aucun admin
+   d'entreprise ne peut créer les comptes de ses employés
+4. **T6.6** — si l'application tombe la nuit, personne ne le sait
+
+**Note sur T5.4.** Le runbook est écrit et la CI prouve déjà que la
+séquence de mise en production réussit. Il manque un compte cloud. C'est
+la seule tâche du projet qui dépend d'une décision hors code.
 
 ---
 
@@ -915,9 +948,422 @@ par quelqu'un disposant des accès.
 
 ---
 
+## PHASE 6 — Livraison client (couche SaaS)
+
+> **Pourquoi cette phase existe.** Les phases 0 à 5 produisent une
+> application. Cette phase en fait un service qu'un client peut acheter,
+> ouvrir dans son navigateur et utiliser sans jamais voir un terminal.
+>
+> **Point de départ.** Aujourd'hui, un client ne peut ni obtenir un
+> compte, ni inviter son équipe, ni recevoir la moindre notification. Les
+> tenants viennent du seed, les alertes ne vivent qu'en base. Le pricing
+> existe dans le document investisseur mais nulle part dans le code.
+>
+> **Sur le mot « application ».** AeroOS est une application web : le
+> client ouvre une URL dans son navigateur. Le terminal est votre
+> environnement de développement, pas le sien. Une fois T5.4 exécuté, il
+> n'y a rien à installer côté client — voir T6.10 pour l'icône de bureau.
+>
+> **Ordre.** T6.3 (e-mails) est bloquant pour T6.1 et T6.2. Faire les
+> trois d'abord.
+
+---
+
+### [ ] T6.3 — Envoi d'e-mails
+
+**Fait en premier : bloque T6.1 et T6.2.**
+
+**Contexte.** Le moteur d'alertes (`lib/alerts.ts`) génère déjà des
+alertes que personne ne reçoit — elles ne vivent qu'en base et sur le
+dashboard. Aucun canal sortant n'existe.
+
+**Recommandation.** Resend ou Postmark. Éviter SendGrid pour un
+démarrage : la délivrabilité initiale y est capricieuse.
+
+**Fichiers.**
+- `src/lib/email/send.ts` (nouveau) — abstraction fournisseur, même
+  approche que `src/lib/storage.ts` (T2.5) : driver console en
+  développement, driver réel en production, sélection par variable
+  d'environnement
+- `src/lib/email/templates/` (nouveau)
+
+**Modèles nécessaires.** Activation de compte · invitation ·
+réinitialisation de mot de passe · résumé quotidien des alertes · alerte
+critique immédiate.
+
+**Règles.**
+- En développement et en test, écrire dans un fichier ou la console —
+  jamais d'envoi réel (même logique que le driver storage local)
+- Ne jamais mettre de donnée contractuelle sensible dans le corps du
+  message : un lien vers la plateforme, pas les montants. Le mail sort du
+  périmètre chiffré et transite par un sous-traitant.
+- Appliquer la même discipline qu'en T5.3 : aucune donnée personnelle
+  dans les logs d'envoi, seulement `userId` et le type de message
+- Résumé quotidien groupé plutôt qu'un message par alerte, sinon le
+  client filtre tout au bout d'une semaine
+
+**Acceptation.**
+- Les alertes critiques déclenchent un e-mail
+- Le résumé quotidien groupe les alertes non critiques
+- Aucun envoi réel en développement ni en test
+- Désinscription possible des résumés, pas des alertes critiques
+- Le driver réel échoue proprement si la clé API manque, sans écriture
+  partielle (même exigence que le pipeline IA en T3.1)
+
+---
+
+### [ ] T6.1 — Provisionnement d'un tenant
+
+**Contexte.** Les tenants viennent du seed. Créer un client aujourd'hui
+suppose d'écrire du SQL à la main.
+
+**Décision.** Ne PAS construire d'inscription libre en self-service. Le
+segment cible s'acquiert par conversation directe — le plan d'acquisition
+le dit explicitement. Ce qu'il faut, c'est un **provisionnement
+administrateur** : créer un client en trois minutes après signature, sans
+toucher à la base.
+
+**Fichiers.**
+- `src/app/(admin)/tenants/page.tsx` (nouveau) — console interne
+- `src/app/(admin)/tenants/new/page.tsx` (nouveau)
+- `src/lib/actions/tenant.ts` (nouveau)
+- `src/lib/auth.ts` — ajouter un rôle `SUPERADMIN` hors tenant
+
+**Attention sécurité — le point délicat de cette tâche.** Un `SUPERADMIN`
+traverse les tenants par définition, ce que le RLS interdit précisément.
+Passer par le rôle `aeroos_system` (`SYSTEM_DATABASE_URL`) via
+`asSystem()`, jamais par le client applicatif.
+
+Rappel du correctif de T5.3 : `asSystem()` journalise sa raison. Ne
+jamais y interpoler d'e-mail, de nom de client ni d'identifiant
+nominatif — la fuite trouvée en T5.3 venait exactement de là. Texte
+générique uniquement, et détails dans l'audit, pas dans le log.
+
+**Chaque accès superadmin à des données client doit être audité** aussi
+strictement qu'un accès client.
+
+**Le formulaire crée.**
+1. Le `Tenant` (nom, plan, devise, région de stockage, quotas)
+2. Le premier `User` en rôle `ADMIN`
+3. Un `Portfolio` par défaut
+4. Un e-mail d'activation avec définition du mot de passe (dépend de
+   T6.3, et doit respecter la politique de mot de passe de T1.3)
+
+**Acceptation.**
+- Créer un client complet en moins de 3 minutes sans toucher à la base
+- La région de stockage est immuable après création (conformité D2)
+- Les quotas du plan sont enregistrés (`maxAssets`, `maxUsers`)
+- Un accès `SUPERADMIN` à des données client apparaît dans le journal
+  d'audit
+- Impossible de créer un tenant dont l'entité est dans un pays sous
+  embargo — réutiliser la logique de screening de T4.1
+- `npm run test:isolation` passe toujours après l'ajout du rôle
+
+---
+
+### [ ] T6.2 — Invitation et gestion des utilisateurs
+
+**Contexte.** C'est le besoin exprimé directement : **chaque entreprise
+cliente doit avoir son propre administrateur**, capable de créer les
+comptes de ses employés sans passer par vous.
+
+Le modèle a déjà les quatre rôles (`ADMIN`, `MANAGER`, `ANALYST`,
+`VIEWER`) et le RLS garantit qu'un `ADMIN` ne voit jamais les données
+d'un autre client. Il manque le mécanisme d'invitation.
+
+**Fichiers.**
+- `src/app/(app)/settings/users/page.tsx` (nouveau)
+- `src/app/(auth)/accept-invite/[token]/page.tsx` (nouveau)
+- `src/lib/actions/invite.ts` (nouveau)
+
+**Migration.** Nouveau modèle `Invitation` : `tenantId`, `email`, `role`,
+`tokenHash`, `expiresAt` (7 jours), `acceptedAt`, `invitedById`.
+Stocker le hash du token, jamais le token en clair — même principe que
+les codes de récupération MFA de T1.1.
+
+**Règles.**
+- Seul un `ADMIN` du tenant peut inviter
+- Quota `maxUsers` vérifié avant l'envoi
+- Token à usage unique, expirant
+- Rétrograder ou désactiver un utilisateur invalide ses sessions (la
+  mécanique existe depuis T1.3, changement de mot de passe)
+- Un `ADMIN` ne peut pas se retirer son propre rôle s'il est le dernier —
+  sinon l'entreprise devient ingérable et doit vous appeler
+
+**Acceptation.**
+- Cycle complet : invitation → e-mail → définition du mot de passe →
+  connexion avec le bon rôle
+- Un token expiré ou réutilisé est refusé
+- Un admin du tenant A ne peut pas inviter dans le tenant B (tester
+  explicitement, comme pour l'isolation des documents en T2.5)
+- Entrées d'audit : invitation, acceptation, changement de rôle,
+  désactivation
+
+---
+
+### [ ] T6.4 — Onboarding guidé en moins de 30 minutes
+
+**Contexte.** Critère de succès chiffré du plan d'exécution et argument
+commercial. Aujourd'hui, un nouveau client arrive sur un dashboard vide
+sans savoir quoi faire.
+
+**Bonne nouvelle.** Les briques existent déjà : import CSV (T2.4),
+formulaires actif et contrat (T2.1, T2.2), upload de documents (T2.5). Il
+manque le fil conducteur.
+
+**Fichiers.**
+- `src/app/(app)/onboarding/page.tsx` (nouveau)
+- `src/lib/onboarding.ts` (nouveau) — calcul de l'état d'avancement
+
+**Parcours en 5 étapes.**
+1. Créer le portefeuille (nom, devise)
+2. Importer les actifs (réutilise T2.4)
+3. Ajouter les contreparties — déclenche le screening sanctions de T4.1
+4. Saisir ou importer les contrats
+5. Vérifier le dashboard
+
+**Principes.**
+- Barre de progression persistante tant que l'onboarding n'est pas fini
+- Chaque étape peut être sautée puis reprise
+- Données d'exemple téléchargeables au bon format à chaque étape
+- L'étape 2 doit fonctionner avec un vrai fichier Excel sale
+
+**Acceptation.**
+- Un utilisateur qui n'a jamais vu la plateforme importe 20 actifs et
+  5 contrats en moins de 30 minutes, chronométré
+- L'état d'avancement survit à une déconnexion
+- Aucune étape ne bloque : on peut toujours passer à la suivante
+
+---
+
+### [ ] T6.5 — Quotas de plan et écran d'abonnement
+
+**Contexte.** Le pricing existe dans le document investisseur : Starter
+1 500 €, Professional 4 500 €, Enterprise sur devis, −15 % à l'engagement
+annuel. Les champs `plan`, `maxAssets`, `maxUsers` existent sur `Tenant`
+mais ne contraignent rien.
+
+**Décision.** Pour les trois premiers pilotes, **pas de paiement en
+ligne**. Facturation manuelle par virement, contrat de deux pages.
+Construire Stripe quand il y aura huit clients — c'est du temps volé au
+produit avant.
+
+**Ce qu'il faut maintenant.**
+- `maxAssets` bloque réellement la création au-delà du quota, avec un
+  message d'upgrade explicite — pas une erreur technique
+- `maxUsers` idem sur les invitations (T6.2)
+- Écran « Abonnement » : plan, quotas consommés, date de renouvellement
+- Un `SUPERADMIN` peut changer le plan d'un tenant (audité)
+
+**Acceptation.**
+- Dépasser le quota affiche un message clair et actionnable
+- L'écran Abonnement est exact
+- Le changement de plan est audité
+
+---
+
+### [ ] T6.6 — Sonde externe, page de statut, runbook d'incident
+
+**Déjà fait en T5.3 — ne pas refaire :** endpoint `/api/health`
+(200/503, vérifié en conditions réelles), logs structurés pino, suivi
+d'erreurs via `error-tracking.ts`.
+
+**Ce qui reste.**
+- Sonde externe interrogeant `/api/health` toutes les minutes
+  (UptimeRobot, Better Stack — gratuit à ce volume). C'est le point
+  essentiel : aujourd'hui, si l'application tombe la nuit, personne ne le
+  sait.
+- Alerte vers votre téléphone si indisponibilité > 2 minutes
+- Page de statut publique
+- Calcul automatisé de la disponibilité mensuelle — c'est lui qui
+  déclenche un éventuel remboursement au titre du SLA 99,9 %
+- `SENTRY_DSN` réel configuré en production (noté non vérifié en T5.3)
+
+**Procédure d'incident (conformité §2.3).** Qualification < 2 h ·
+confinement < 4 h · notification client < 72 h · post-mortem sous
+5 jours. **Écrire le runbook avant le premier incident, pas pendant.**
+
+**Acceptation.**
+- Une coupure simulée déclenche une alerte en moins de 3 minutes
+- La page de statut reflète l'état réel
+- Le runbook existe et a été relu
+- Le calcul de disponibilité mensuel est automatisé
+
+---
+
+### [ ] T6.7 — Restauration vérifiée et export client
+
+**Recouvre le point 6 du runbook T5.4** — à traiter ensemble.
+
+**Contexte.** Le RPO < 1 h et le RTO < 4 h sont des engagements
+contractuels. Une sauvegarde jamais restaurée n'est pas une sauvegarde.
+
+**À faire.**
+- Sauvegardes automatiques du Postgres managé, rétention 30 jours
+- **Restauration testée**, en vérifiant que `npm run test:isolation`
+  passe contre la base restaurée : ce qui compte n'est pas seulement la
+  survie des données, mais celle des rôles `aeroos_app` / `aeroos_system`
+  et des politiques RLS
+- Procédure écrite, exécutable par quelqu'un d'autre que vous
+- Test de restauration mensuel planifié
+
+**Export par tenant.** Un client qui part doit récupérer ses données —
+exigence RGPD, et argument commercial de réversibilité. La logique
+d'export de T4.2 existe pour un utilisateur ; l'étendre à un tenant
+entier (actifs, contrats, documents, valorisations).
+
+**Acceptation.**
+- Une restauration complète a été réalisée au moins une fois, chronométrée
+- Le temps mesuré est inférieur au RTO annoncé
+- `test:isolation` passe sur la base restaurée
+- L'export tenant produit une archive exploitable
+
+---
+
+### [ ] T6.8 — Support et documentation utilisateur ⚡
+
+**Contexte.** Trois pilotes vont poser des questions. Sans canal défini,
+elles arrivent par SMS à 22 h et se perdent.
+
+**Minimum viable.**
+- Adresse `support@` avec engagement de réponse sous 24 h ouvrées
+- Guide de démarrage : 5 pages, captures d'écran, pas plus
+- FAQ alimentée par les vraies questions des pilotes
+- Journal des versions visible dans l'application
+
+**Ce qu'il ne faut pas faire.** Pas de chat en direct, pas d'outil de
+ticketing, pas de base de connaissance élaborée. À trois clients, l'e-mail
+suffit et vous apprend davantage.
+
+**Acceptation.**
+- Le guide permet à un utilisateur de démarrer sans vous appeler
+- Chaque question de pilote devient une entrée FAQ ou un ticket produit
+
+---
+
+### [ ] T6.9 — Environnement de recette
+
+**Partiellement couvert.** La CI (T5.2) valide déjà chaque push contre un
+Postgres neuf. Il manque un environnement persistant entre le
+développement et la production.
+
+**Pourquoi c'est nécessaire dès le premier pilote.** Sans recette, tester
+une migration signifie l'appliquer directement sur les données d'un vrai
+client. Inacceptable.
+
+**Trois environnements.**
+- **Développement** — local, données de seed
+- **Recette** — copie de production, **données anonymisées**, pour tester
+  les migrations avant application
+- **Production** — données clients réelles
+
+**Règles.**
+- Aucune donnée client réelle hors production
+- Toute migration passe par la recette
+- Secrets distincts par environnement, `AUTH_SECRET` différent partout
+- `npm run db:rls` après chaque migration, sur chaque environnement
+  (point 7 du runbook T5.4)
+
+**Script d'anonymisation production → recette.** Réutiliser la logique
+d'anonymisation de T4.2 : e-mails remplacés, noms neutralisés, montants
+conservés (ils ne sont pas des données personnelles et leur réalisme
+compte pour tester).
+
+**Acceptation.**
+- Les trois environnements existent et sont isolés
+- Le script d'anonymisation fonctionne
+- Aucun accès direct à la base de production depuis un poste de
+  développement
+
+---
+
+### [ ] T6.10 — Installation type application (PWA) ⚡
+
+**Contexte.** AeroOS est une application web : le client ouvre une URL,
+sans rien installer. Mais un lessor qui l'ouvre dix fois par jour préfère
+une icône sur son bureau plutôt qu'un onglet perdu parmi trente autres.
+
+Une PWA donne exactement ça : le navigateur propose « Installer »,
+l'application obtient sa propre fenêtre et sa propre icône, sans barre
+d'adresse. Aucune distribution à gérer, aucune mise à jour à pousser —
+c'est toujours la version déployée qui s'exécute.
+
+**Ne pas confondre avec une application de bureau.** Electron ou Tauri
+supposeraient de compiler et distribuer des binaires par plateforme, de
+gérer les mises à jour sur chaque poste et de signer le code. Cela ne se
+justifie que pour un besoin hors ligne ou un accès au matériel — ni l'un
+ni l'autre ne concerne AeroOS.
+
+**Fichiers.**
+- `public/manifest.json` (nouveau)
+- `public/icons/` — 192×192, 512×512, maskable
+- `src/app/layout.tsx` — lier le manifeste
+
+**Manifeste.**
+```json
+{
+  "name": "AeroOS — Asset Management",
+  "short_name": "AeroOS",
+  "start_url": "/portfolio",
+  "display": "standalone",
+  "background_color": "#080E1C",
+  "theme_color": "#0E1629"
+}
+```
+
+**Sur le service worker — prudence.** La tentation est de mettre les
+données en cache pour un mode hors ligne. **Ne pas le faire.** Des
+valorisations ou des échéances périmées affichées comme actuelles sont
+pires que pas de données du tout, et le cache local de données
+contractuelles pose une question de conformité (§1). Se limiter aux
+ressources statiques, et afficher un message clair sans connexion.
+
+**Acceptation.**
+- Chrome et Edge proposent « Installer » sur desktop
+- L'application installée s'ouvre en fenêtre autonome
+- L'icône s'affiche correctement sur Windows et macOS
+- Hors connexion : message explicite, aucune donnée périmée affichée
+
+---
+
+### [ ] T6.11 — Vérifier le pipeline IA en conditions réelles
+
+**Contexte.** T3.1 et T3.2 sont implémentés et testés jusqu'à la limite
+du secret manquant, mais aucun appel réel n'a été effectué —
+`ANTHROPIC_API_KEY` n'était pas disponible. Deux points restent
+explicitement non validés (cf. note T3.1) : la qualité de `sourcePage`,
+qui dépend des marqueurs de page insérés par `pdf-parse`, et le format de
+sortie structuré (JSON Schema brut, le helper `zodOutputFormat` du SDK
+exigeant zod v4 alors que le projet est en zod v3).
+
+**À faire.**
+1. Configurer une clé réelle en développement
+2. Tester sur **10 contrats de formats différents** — pas un seul PDF
+   propre. Inclure au moins un scan de mauvaise qualité et un contrat
+   avec avenants.
+3. Mesurer le taux d'erreur par champ et confronter au critère du plan
+   d'exécution : moins de 5 % d'erreur, confiance moyenne supérieure
+   à 85 %
+4. Vérifier que les clauses de sanctions sont bien détectées et forcent
+   la révision humaine
+5. Si `sourcePage` est peu fiable, décider : améliorer les marqueurs de
+   page, ou retirer l'affichage plutôt que d'afficher une référence fausse
+
+**Acceptation.**
+- Taux d'erreur mesuré et documenté sur 10 contrats variés
+- Aucune écriture en base sans validation humaine (revérifié en réel)
+- Les corrections utilisateur sont bien stockées dans
+  `AiExtraction.corrections` — c'est la matière première pour améliorer
+  le prompt
+
+---
+
 ## Backlog — pas encore planifié
 
 - Portail locataire (accès limité pour les compagnies aériennes)
+- Paiement en ligne Stripe (à partir de 8 clients — voir T6.5)
+- Inscription libre en self-service (seulement si le segment cible change)
+- **Option IA auto-hébergée, gamme Enterprise** — voir la note ci-dessous
 - Marketplace (phase 3 du plan d'exécution — nécessite un effet réseau)
 - Module Carbon & ESG
 - Application mobile d'inspection (photos, QR, NFC)
@@ -925,6 +1371,51 @@ par quelqu'un disposant des accès.
 - Reporting IFRS 16
 - API publique + documentation OpenAPI
 - Support multi-devises avec taux historiques
+
+---
+
+
+### Note — option IA auto-hébergée (Enterprise)
+
+**Décision prise :** l'IA passe par une API externe. Documenté ici pour
+que le débat ne se rouvre pas à chaque session.
+
+**Pourquoi l'API plutôt qu'un modèle local.**
+- *Qualité.* Extraire 18 champs d'un contrat de 60 pages avec un score de
+  confiance par champ est une tâche de raisonnement difficile. Un modèle
+  léger auto-hébergé (7B–13B) confond dates de signature et de livraison,
+  rate les avenants, hallucine des montants. Le différenciateur produit
+  deviendrait le point faible : un client qui doit tout revérifier
+  n'utilisera pas la fonctionnalité.
+- *Charge opérationnelle.* GPU à provisionner, service d'inférence à
+  maintenir, mises à jour de modèle, monitoring dédié. Six semaines
+  volées au produit pour une équipe de quatre personnes.
+- *Économie.* À 4 500 €/mois par client, quelques euros d'inférence par
+  contrat sont négligeables. Un GPU dédié coûte plus cher tant que le
+  volume est faible.
+- *Conformité.* Un DPA avec traitement en région UE et engagement de
+  non-rétention couvre le RGPD. Le cahier de conformité (§1.1,
+  contexte 3) exige la **traçabilité** de chaque extraction, pas
+  l'hébergement local.
+
+**Mesures d'atténuation — déjà en place ou à confirmer en T6.11.**
+- OCR exécuté localement (`pdf-parse`) : extraire le texte ne demande
+  aucun raisonnement et évite d'envoyer le document brut
+- N'envoyer que les sections pertinentes, pas le contrat entier
+- Couche d'abstraction du fournisseur (prévue au sprint S8 du plan
+  d'exécution) — c'est elle qui protège, pas le choix initial
+- `modelName`, `modelVersion`, `promptVersion` journalisés à chaque appel
+
+**Quand basculer en local.** Le jour où un client enterprise l'exige
+contractuellement — cela arrivera, le secteur est conservateur. À ce
+moment-là : volume, revenus et abstraction seront en place. Ce sera une
+**option de gamme Enterprise facturée en conséquence**, pas une
+contrainte subie.
+
+**Ce qu'il faudra alors évaluer.** Modèles ouverts de taille moyenne
+(30B+) spécialisés sur l'extraction documentaire, hébergés dans la région
+du client, derrière la même interface — d'où l'importance de
+l'abstraction.
 
 ---
 

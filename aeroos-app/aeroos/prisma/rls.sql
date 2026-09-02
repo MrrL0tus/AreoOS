@@ -9,7 +9,9 @@
 -- un oubli = fuite de données) et "la base refuse physiquement" (robuste).
 --
 -- À exécuter après `prisma migrate deploy` :
---   psql $DATABASE_URL -f prisma/rls.sql
+--   DATABASE_URL=<rôle superuser> npm run db:rls
+-- (le script scripts/apply-rls.ts exécute ce fichier via `pg`, pas `psql` —
+-- le binaire n'est pas garanti présent sur les plateformes de déploiement)
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ─────────────────────────────────────────────────────────────────

@@ -94,8 +94,11 @@ jobs:
           GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO aeroos_system;
           SQL
 
+      # Via tsx + pg (npm run db:rls), pas psql : c'est le même script qui
+      # tournera en production, où psql n'est pas garanti présent (cf.
+      # TODO.md T5.4, AAA.txt point 2).
       - name: Appliquer les politiques RLS
-        run: psql "$DATABASE_URL" -f prisma/rls.sql
+        run: npm run db:rls
         env:
           DATABASE_URL: ${{ env.ADMIN_DATABASE_URL }}
 

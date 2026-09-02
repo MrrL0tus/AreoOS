@@ -894,11 +894,36 @@ l'utilisateur : pas d'accès à un compte cloud dans cet environnement, et
 provisionner de l'infra réelle (facturable, difficile à annuler) n'est
 pas une action à prendre sans autorisation directe — cf. les points 3 et
 4 ci-dessous, qui exigent un compte réel et ne peuvent donc pas être
-cochés depuis ici. Case laissée décochée : contrairement à T3.1/T3.2/T5.3
-(où le pipeline était vérifiable jusqu'à la limite du secret manquant),
-« Déploiement » n'a de sens que si l'app est réellement déployée — rien
-à côté de ça ne satisfait l'énoncé. Ce qui suit est le runbook à exécuter
-par quelqu'un disposant des accès.
+cochés depuis ici. Ce qui suit est le runbook à exécuter par quelqu'un
+disposant des accès.
+
+**Note (2026-09-02) — application déployée sur Railway, deux trous
+trouvés en revue et un corrigé.** L'utilisateur confirme le déploiement
+Railway effectué. Revue des points de vigilance restants :
+
+- **Corrigé et vérifié en conditions réelles.** `npm run db:rls`
+  appelait `psql` directement (`"db:rls": "psql \"$DATABASE_URL\" -f
+  prisma/rls.sql"`) — binaire non garanti présent dans l'image de build
+  Railway (runtime Node seul, pas d'outillage Postgres). Remplacé par
+  `scripts/apply-rls.ts` (`tsx` + `pg`, protocole simple qui accepte le
+  script multi-instructions tel quel, contrairement au protocole étendu
+  de Prisma). Revérifié contre Postgres local : les 18 tables attendues
+  passent à `rls_enabled/rls_forced = true`, `npm run test:isolation`
+  14/14, `npm run build` propre. `.github/workflows/ci.yml` appelle
+  maintenant `npm run db:rls` (au lieu du `psql` brut) pour que ce script
+  soit rejoué à chaque push, pas seulement testé une fois localement.
+- **Fait le 2026-09-02.** Rôles `aeroos_app` (NOBYPASSRLS) et
+  `aeroos_system` (BYPASSRLS) créés sur la base managée Railway via
+  `scripts/create-app-roles.ts` contre l'URL externe (`*.proxy.rlwy.net`,
+  pas `*.railway.internal` — inaccessible hors du réseau privé Railway).
+  Les deux URLs générées ont été affichées une seule fois en sortie de
+  script ; **reste à confirmer qu'elles ont bien été copiées dans le
+  gestionnaire de secrets Railway** (`DATABASE_URL` / `SYSTEM_DATABASE_URL`,
+  point 3 du runbook) et que le service applicatif a été redéployé/redémarré
+  avec ces variables — tant que ce n'est pas fait, l'app continue de
+  tourner avec le rôle superuser (`ADMIN_DATABASE_URL`) et le RLS reste
+  silencieusement contourné. Point 6 (sauvegarde + restauration testée)
+  toujours pas fait.
 
 **Ce qui est déjà vérifié et prêt (aucune action supplémentaire requise) :**
 - `npm run build` produit un build de production propre (revérifié à
@@ -913,11 +938,16 @@ par quelqu'un disposant des accès.
 
 **Runbook à suivre (Railway, recommandation retenue) :**
 1. Créer le projet Railway, ajouter un service Postgres 16 managé.
-2. Créer les rôles applicatifs sur cette base managée — **mêmes
-   commandes SQL que `.env.example` documente et que `ci.yml` exécute**
-   (`aeroos_app` NOSUPERUSER NOBYPASSRLS, `aeroos_system` NOSUPERUSER
-   BYPASSRLS), avec des mots de passe de production générés (pas ceux de
-   dev/CI).
+2. Créer les rôles applicatifs sur cette base managée — `aeroos_app`
+   NOSUPERUSER NOBYPASSRLS, `aeroos_system` NOSUPERUSER BYPASSRLS, avec
+   des mots de passe de production générés (pas ceux de dev/CI). Utiliser
+   `scripts/create-app-roles.ts` plutôt que taper le SQL à la main
+   (idempotent, testé de bout en bout le 2026-09-02) :
+   `ADMIN_DATABASE_URL="<external connection string Railway, onglet
+   Variables du service Postgres>" npx tsx scripts/create-app-roles.ts`
+   — copier immédiatement les deux URLs affichées dans le gestionnaire
+   de secrets Railway (étape 3), le mot de passe n'est montré qu'une
+   fois.
 3. Renseigner dans le gestionnaire de secrets Railway (jamais dans le
    repo) : `DATABASE_URL` (rôle `aeroos_app`), `ADMIN_DATABASE_URL`
    (rôle superuser managé, pour les migrations/RLS uniquement — pas
@@ -931,8 +961,10 @@ par quelqu'un disposant des accès.
 4. Déploiement initial : `DATABASE_URL=<ADMIN_DATABASE_URL> npx prisma
    migrate deploy`, puis `DATABASE_URL=<ADMIN_DATABASE_URL> npm run
    db:rls` (rôle superuser — les politiques RLS ne sont pas gérées par
-   Prisma, cf. CLAUDE.md). Puis déployer l'app avec les variables du
-   point 3.
+   Prisma, cf. CLAUDE.md). `db:rls` exécute `scripts/apply-rls.ts` via
+   `pg`, plus besoin de `psql` — le binaire n'est pas garanti présent sur
+   l'image Railway (corrigé le 2026-09-02, cf. note ci-dessus). Puis
+   déployer l'app avec les variables du point 3.
 5. Vérifier `GET /api/health` → `200 {"status":"ok","database":"up"}`
    avant de considérer le déploiement réussi.
 6. **Sauvegardes** : activer les sauvegardes automatiques du Postgres

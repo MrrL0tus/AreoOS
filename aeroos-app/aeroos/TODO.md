@@ -17,30 +17,43 @@ elles, aucun client ne peut obtenir de compte ni recevoir de notification.
 
 ## État d'avancement
 
-*Dernière synchronisation : 30 août 2026*
+*Dernière synchronisation : 2 septembre 2026 (session de vérification T5.4)*
 
-| Phase | Avancement | Reste |
-|---|---|---|
-| **0 — Mise en route** | ✅ 4/4 | — |
-| **1 — Sécurité** | ✅ 4/4 | — |
-| **2 — Utilisable** | ✅ 6/6 | — |
-| **3 — IA** | ✅ 3/3 | vérification réelle → T6.11 |
-| **4 — Conformité** | ✅ 3/3 | — |
-| **5 — Production** | 🔵 3/4 | T5.4 déploiement (bloqué : accès cloud) |
-| **6 — Livraison client** | ⬜ 0/11 | tout |
+| Phase                           | Avancement | Reste                                                                                                          |
+| ------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| **0 — Mise en route**    | ✅ 4/4     | —                                                                                                             |
+| **1 — Sécurité**       | ✅ 4/4     | —                                                                                                             |
+| **2 — Utilisable**       | ✅ 6/6     | —                                                                                                             |
+| **3 — IA**               | ✅ 3/3     | vérification réelle → T6.11                                                                                 |
+| **4 — Conformité**      | ✅ 3/3     | —                                                                                                             |
+| **5 — Production**       | 🔵 3/4     | T5.4 : login réel en panne (`ALLOW_SYSTEM_ACCESS` manquant sur Railway) + sauvegarde/restauration à tester |
+| **6 — Livraison client** | ⬜ 0/11    | tout                                                                                                           |
 
 **Total : 23 / 36 tâches.** 158 tests passent.
 
 **Ce qui bloque le premier client.** Dans l'ordre :
-1. **T5.4** — l'application n'est déployée nulle part
+
+1. **T5.4 (résiduel)** — **le login réel est cassé en production**
+   (`POST /api/auth/login` → 500 systématique, cause probable :
+   `ALLOW_SYSTEM_ACCESS` absent des variables Railway — cf. note
+   détaillée ci-dessous) : personne ne peut se connecter tant que ce
+   n'est pas corrigé, priorité sur tout le reste de cette liste. Ensuite
+   seulement : sauvegarde automatique + restauration testée (point 6 du
+   runbook). Le déploiement lui-même est en vie et vérifié sur
+   `aeroos_app` (pas le superuser), RLS confirmé par un vrai
+   `test:isolation` (14/14).
 2. **T6.3** — aucun e-mail ne peut sortir
 3. **T6.1 / T6.2** — aucun client ne peut obtenir de compte, aucun admin
    d'entreprise ne peut créer les comptes de ses employés
 4. **T6.6** — si l'application tombe la nuit, personne ne le sait
 
-**Note sur T5.4.** Le runbook est écrit et la CI prouve déjà que la
-séquence de mise en production réussit. Il manque un compte cloud. C'est
-la seule tâche du projet qui dépend d'une décision hors code.
+**Note sur T5.4.** Déployée sur Railway (confirmé par l'utilisateur le
+2026-09-02, re-testé en direct ce même jour — cf. la note détaillée dans
+la tâche : `/api/health` répond `200 ok`, le rôle applicatif actif en
+base est bien `aeroos_app`, RLS forcé sur les 16 tables tenant-scopées).
+Il ne reste que le point 6 du runbook (sauvegarde + restauration
+vérifiée), qui recouvre aussi T6.7 — à traiter ensemble comme déjà noté
+dans T6.7.
 
 ---
 
@@ -55,6 +68,7 @@ la seule tâche du projet qui dépend d'une décision hors code.
 généré. Des erreurs de types sont attendues au premier passage.
 
 **Étapes.**
+
 1. `npm install`
 2. `npx prisma generate`
 3. `npm run typecheck`
@@ -62,6 +76,7 @@ généré. Des erreurs de types sont attendues au premier passage.
    dépendent des libs, pas l'inverse)
 
 **Pièges connus.**
+
 - `Decimal` de Prisma : importer depuis `@prisma/client/runtime/library`,
   pas depuis `@prisma/client`
 - Les résultats de `withTenant()` peuvent être typés `unknown` si le
@@ -69,6 +84,7 @@ généré. Des erreurs de types sont attendues au premier passage.
 - `params` des pages dynamiques est une `Promise` en Next.js 15
 
 **Acceptation.**
+
 - `npm run typecheck` retourne 0 erreur
 - Aucun `any` ajouté pour contourner une erreur (utiliser des types
   précis ou `unknown` + narrowing)
@@ -78,6 +94,7 @@ généré. Des erreurs de types sont attendues au premier passage.
 ### [x] T0.2 — Initialiser la base et charger le seed
 
 **Étapes.**
+
 1. `cp .env.example .env`
 2. Générer la clé : `openssl rand -base64 32` → coller dans `AUTH_SECRET`
 3. `npm run db:up` (attendre que Postgres soit healthy)
@@ -86,6 +103,7 @@ généré. Des erreurs de types sont attendues au premier passage.
 6. `npm run db:seed`
 
 **Acceptation.**
+
 - `npm run db:studio` montre des données dans `aircraft`, `lease_contracts`,
   `operators`
 - Le seed affiche un résumé sans erreur
@@ -98,11 +116,13 @@ généré. Des erreurs de types sont attendues au premier passage.
 échoue, tout le reste est compromis.
 
 **Étapes.**
+
 1. `npm run test:isolation`
 2. Si un test échoue, vérifier d'abord que `npm run db:rls` a bien été
    exécuté après la dernière migration
 
 **Acceptation.**
+
 - Tous les tests passent
 - En particulier : une requête sans contexte tenant retourne 0 ligne
 
@@ -111,12 +131,14 @@ généré. Des erreurs de types sont attendues au premier passage.
 ### [x] T0.4 — Valider les écrans
 
 **Étapes.**
+
 1. `npm run dev`
 2. Se connecter avec `admin@meridian-aviation.com` / `demo1234`
 3. Parcourir : Portfolio → Actifs → fiche actif → Contrats → Valorisation
    → Documents → IA → Audit
 
 **Acceptation.**
+
 - Chaque page se charge sans erreur console
 - Les KPIs du portfolio affichent des valeurs cohérentes (pas de `NaN`,
   pas de `—` partout)
@@ -141,6 +163,7 @@ l'ouverture des accès beta.
 **Dépendance à ajouter.** `otplib` + `qrcode`
 
 **Fichiers.**
+
 - `src/lib/mfa.ts` (nouveau) — génération de secret, vérification de code
 - `src/app/(app)/settings/mfa/page.tsx` (nouveau) — activation avec QR code
 - `src/app/api/auth/mfa/setup/route.ts` (nouveau)
@@ -149,11 +172,11 @@ l'ouverture des accès beta.
 - `src/app/(auth)/login/page.tsx` — écran de saisie du code
 
 **Étapes.**
+
 1. `src/lib/mfa.ts` : `generateSecret()`, `buildOtpauthUrl()`,
    `verifyToken(secret, token)` avec fenêtre de tolérance ±1 période
 2. Modifier `login()` : si `user.mfaEnabled`, ne pas créer la session
-   directement mais retourner `{ success: false, mfaRequired: true,
-   challengeToken }` où `challengeToken` est un JWT court (5 min) portant
+   directement mais retourner `{ success: false, mfaRequired: true, challengeToken }` où `challengeToken` est un JWT court (5 min) portant
    `userId` et un flag `mfa_pending`
 3. Nouvelle route `POST /api/auth/mfa/verify` : valide le code TOTP + le
    challengeToken, puis crée la vraie session
@@ -164,6 +187,7 @@ l'ouverture des accès beta.
 **Migration nécessaire.** Ajouter `mfaRecoveryCodes String[]` sur `User`.
 
 **Acceptation.**
+
 - Un utilisateur peut activer le MFA depuis les paramètres
 - La connexion demande le code après le mot de passe
 - Un code invalide est refusé et écrit une entrée d'audit `LOGIN` /
@@ -178,6 +202,7 @@ l'ouverture des accès beta.
 **Contexte.** Sans limite, l'authentification est vulnérable au bruteforce.
 
 **Fichiers.**
+
 - `src/lib/ratelimit.ts` (nouveau)
 - `src/app/api/auth/login/route.ts`
 
@@ -186,10 +211,12 @@ avec un commentaire indiquant qu'il faudra Redis en production
 multi-instance. Ne pas sur-concevoir.
 
 **Règles.**
+
 - 5 tentatives échouées par e-mail sur 15 minutes → blocage 15 min
 - 20 tentatives par IP sur 15 minutes → blocage 1 h
 
 **Acceptation.**
+
 - La 6ᵉ tentative échouée retourne HTTP 429
 - Une connexion réussie remet le compteur à zéro
 - Chaque blocage écrit une entrée d'audit
@@ -200,6 +227,7 @@ multi-instance. Ne pas sur-concevoir.
 ### [x] T1.3 — Politique de mot de passe et changement ⚡
 
 **Fichiers.**
+
 - `src/lib/auth.ts` — `validatePassword()` existe déjà, le renforcer
 - `src/app/(app)/settings/password/page.tsx` (nouveau)
 - `src/app/api/auth/password/route.ts` (nouveau)
@@ -209,6 +237,7 @@ majuscule, chiffre, symbole), refus des 1000 mots de passe les plus
 courants (liste embarquée).
 
 **Acceptation.**
+
 - Un mot de passe faible est refusé avec un message explicite
 - Le changement exige le mot de passe actuel
 - Un changement invalide toutes les sessions existantes de l'utilisateur
@@ -227,6 +256,7 @@ l'utilisateur est déconnecté en pleine saisie.
 intervalle côté client.
 
 **Acceptation.**
+
 - Une session active ne se termine pas brutalement
 - Une session inactive plus de 15 minutes expire bien
 - Le renouvellement n'étend pas indéfiniment (durée absolue max 12 h)
@@ -244,6 +274,7 @@ intervalle côté client.
 formulaire, la plateforme est une démo.
 
 **Fichiers.**
+
 - `src/app/(app)/assets/new/page.tsx` (nouveau)
 - `src/app/(app)/assets/[id]/edit/page.tsx` (nouveau)
 - `src/lib/actions/aircraft.ts` (nouveau) — Server Actions
@@ -254,6 +285,7 @@ formulaire, la plateforme est une démo.
 cabinConfig, seatCount, mtowKg, cofaExpiryDate, insuranceExpiryDate
 
 **Règles métier.**
+
 - `msn` unique par tenant → erreur explicite si doublon
 - `yearBuilt` entre 1950 et année courante + 3
 - `totalCycles` ne peut pas dépasser `totalHours` (un cycle dure au moins
@@ -261,6 +293,7 @@ cabinConfig, seatCount, mtowKg, cofaExpiryDate, insuranceExpiryDate
 - Saisie manuelle → `hoursQuality = DECLARED`
 
 **Acceptation.**
+
 - Création et édition fonctionnent
 - Les erreurs de validation s'affichent au bon champ
 - Vérification du quota `maxAssets` du tenant avant création
@@ -272,11 +305,13 @@ cabinConfig, seatCount, mtowKg, cofaExpiryDate, insuranceExpiryDate
 ### [x] T2.2 — Formulaire de contrat + rattachement moteurs
 
 **Fichiers.**
+
 - `src/app/(app)/contracts/new/page.tsx` (nouveau)
 - `src/app/(app)/contracts/[id]/page.tsx` (nouveau) — fiche détaillée
 - `src/lib/actions/contract.ts` (nouveau)
 
 **Règles métier.**
+
 - `endDate` > `startDate`
 - Un actif ne peut pas avoir deux contrats `ACTIVE` qui se chevauchent
 - Passer un contrat en `ACTIVE` met l'actif en `ON_LEASE` et renseigne
@@ -290,6 +325,7 @@ cabinConfig, seatCount, mtowKg, cofaExpiryDate, insuranceExpiryDate
 sur toute la durée du contrat avec statut `SCHEDULED`.
 
 **Acceptation.**
+
 - Création d'un contrat génère les paiements
 - Le chevauchement est refusé avec un message clair
 - Un locataire bloqué empêche la création
@@ -300,10 +336,12 @@ sur toute la durée du contrat avec statut `SCHEDULED`.
 ### [x] T2.3 — Enregistrement des paiements ⚡
 
 **Fichiers.**
+
 - `src/app/(app)/contracts/[id]/page.tsx` — action sur chaque ligne
 - `src/lib/actions/payment.ts` (nouveau)
 
 **Règles.**
+
 - Montant reçu = montant dû → `RECEIVED`
 - Montant partiel → `PARTIAL`
 - Date de réception > date d'échéance → conserver la trace du retard
@@ -311,6 +349,7 @@ sur toute la durée du contrat avec statut `SCHEDULED`.
   (champ `notes` obligatoire)
 
 **Acceptation.**
+
 - Marquer un paiement reçu met à jour le statut et la date
 - Le dashboard reflète immédiatement le changement
 - Les alertes d'impayé se résolvent au prochain `npm run alerts:run`
@@ -327,10 +366,12 @@ sur toute la durée du contrat avec statut `SCHEDULED`.
 demander un export CSV.
 
 **Fichiers.**
+
 - `src/app/(app)/assets/import/page.tsx` (nouveau)
 - `src/lib/import/aircraft-csv.ts` (nouveau)
 
 **Flux.**
+
 1. Dépôt du fichier
 2. Détection des colonnes + écran de correspondance (l'utilisateur mappe
    ses colonnes aux champs AeroOS)
@@ -339,12 +380,14 @@ demander un export CSV.
 
 **Robustesse.** Le pipeline doit tolérer les données sales — c'est le
 risque n°1 identifié (les lessors ont des données en désordre) :
+
 - Dates en formats multiples (`DD/MM/YYYY`, `YYYY-MM-DD`, `MM/DD/YYYY`)
 - Nombres avec espaces, virgules, points
 - Colonnes manquantes → valeur nulle, pas d'échec
 - Une ligne en erreur n'annule pas tout l'import
 
 **Acceptation.**
+
 - Import de 50 lignes avec 3 lignes volontairement corrompues :
   47 créées, 3 rapportées avec le motif et le numéro de ligne
 - Un template CSV téléchargeable est fourni
@@ -363,12 +406,14 @@ implémentations, sélection par variable d'environnement. Permet de
 développer sans compte cloud.
 
 **Fichiers.**
+
 - `src/lib/storage.ts` (nouveau) — interface `put`, `get`, `delete`, `sign`
 - `src/lib/storage/local.ts`, `src/lib/storage/s3.ts`
 - `src/app/api/documents/upload/route.ts` (nouveau)
 - `src/app/(app)/documents/page.tsx` — brancher l'upload
 
 **Règles.**
+
 - Clé de stockage : `{tenantId}/{aircraftId}/{documentId}/v{version}`
 - Taille max 50 Mo, types autorisés : pdf, jpg, png, docx, xlsx
 - Chiffrement au repos (SSE-S3 côté serveur, ou noter la limite en local)
@@ -377,6 +422,7 @@ développer sans compte cloud.
   d'écrasement
 
 **Acceptation.**
+
 - Upload, listage, téléchargement fonctionnent
 - Un document d'un autre tenant est inaccessible (tester explicitement)
 - Entrée d'audit à l'upload et au téléchargement
@@ -389,12 +435,14 @@ développer sans compte cloud.
 **Contexte.** PostgreSQL `tsvector` suffit largement à ce stade.
 
 **Étapes.**
+
 1. Migration : ajouter une colonne générée `searchVector tsvector` sur
    `Document` et un index GIN
 2. Extraire le texte des PDF à l'upload (`pdf-parse`) → `extractedText`
 3. Barre de recherche sur la page Documents
 
 **Acceptation.**
+
 - Recherche sur le titre et le contenu extrait
 - Résultats limités au tenant courant
 - Temps de réponse < 300 ms sur 1000 documents
@@ -413,6 +461,7 @@ développer sans compte cloud.
 déjà. Il manque le pipeline.
 
 **Fichiers.**
+
 - `src/lib/ai/extract-contract.ts` (nouveau)
 - `src/app/api/ai/extract/route.ts` (nouveau)
 
@@ -425,6 +474,7 @@ Financier : `monthlyRent`, `currency`, `escalationClause`,
 Juridique : `governingLaw`, `hasPurchaseOption`, `sanctionsClause`
 
 **Format de sortie attendu.**
+
 ```json
 {
   "monthlyRent": { "value": 285000, "confidence": 0.97, "sourcePage": 12 },
@@ -433,6 +483,7 @@ Juridique : `governingLaw`, `hasPurchaseOption`, `sanctionsClause`
 ```
 
 **Garde-fous obligatoires (conformité §1.1 contexte 3).**
+
 - Statut `PENDING` systématique, jamais d'écriture directe
 - Tracer `modelName`, `modelVersion`, `promptVersion`
 - Confiance < 0,85 → champ marqué à vérifier dans l'interface
@@ -440,6 +491,7 @@ Juridique : `governingLaw`, `hasPurchaseOption`, `sanctionsClause`
   même avec une confiance élevée
 
 **Acceptation.**
+
 - Extraction sur un PDF de test produit un `AiExtraction` en `PENDING`
 - L'écran `/ai` affiche les champs avec leur confiance
 - Aucune donnée n'atteint `LeaseContract` sans validation
@@ -461,10 +513,12 @@ zod v4 en interne, cf. lib/ai/extract-contract.ts).
 ### [x] T3.2 — Validation et écriture des extractions
 
 **Fichiers.**
+
 - `src/lib/actions/ai-validation.ts` (nouveau)
 - `src/app/(app)/ai/page.tsx` — brancher les boutons
 
 **Flux.**
+
 1. L'utilisateur corrige les champs erronés
 2. Validation → création ou mise à jour du `LeaseContract` avec
    `extractedByAi = true` et `aiExtractionId`
@@ -472,6 +526,7 @@ zod v4 en interne, cf. lib/ai/extract-contract.ts).
    la matière première pour améliorer le prompt
 
 **Acceptation.**
+
 - Valider crée le contrat avec les valeurs corrigées
 - Rejeter passe le statut à `REJECTED` sans rien écrire
 - Entrée d'audit `AI_VALIDATE` avec l'identité du validateur
@@ -492,6 +547,7 @@ restants) · AD traitées / restantes · coût total ventilé · prochaine
 peut pas alimenter un calcul réglementaire (conformité §7 D5).
 
 **Acceptation.**
+
 - Le résumé apparaît sur la fiche document
 - Lien vers le rapport source toujours présent
 - Retour utilisateur (utile / pas utile) enregistré
@@ -516,22 +572,26 @@ la pertinence du texte narratif et la fiabilité des champs numériques
 pouvoir être enregistré avec une contrepartie bloquée.
 
 **Approche progressive.**
+
 1. **Étape 1 :** import manuel de la liste SDN de l'OFAC (fichier CSV
    public) + correspondance par nom avec distance de Levenshtein
 2. **Étape 2 :** API commerciale (ComplyAdvantage, Refinitiv) quand le
    budget le permet
 
 **Fichiers.**
+
 - `src/lib/compliance/sanctions.ts` (nouveau)
 - `scripts/import-sanctions-list.ts` (nouveau)
 
 **Règles.**
+
 - Screening à la création d'un opérateur et annuellement
 - Correspondance exacte → `BLOCKED`
 - Correspondance approchante (> 85 % de similarité) → `FLAGGED`
 - Chaque screening écrit un audit avec la liste consultée et sa date
 
 **Acceptation.**
+
 - Un opérateur nommé comme une entité sanctionnée est bloqué
 - Le dashboard affiche une alerte visuelle sur les actifs concernés
 - La création de contrat est refusée pour un locataire bloqué
@@ -565,6 +625,7 @@ de `src/lib/compliance/sanctions.ts`).
 **Contexte.** Articles 15 et 17 du RGPD. Délai légal : 30 jours.
 
 **Fichiers.**
+
 - `src/app/api/admin/export-user-data/route.ts` (nouveau)
 - `src/lib/gdpr.ts` (nouveau)
 
@@ -572,6 +633,7 @@ de `src/lib/compliance/sanctions.ts`).
 l'utilisateur : profil, entrées d'audit, actions.
 
 **Effacement.** Anonymisation, pas suppression :
+
 - `email` → `deleted-{uuid}@anonymized.local`
 - `firstName` / `lastName` → `[supprimé]`
 - `passwordHash` → invalidé
@@ -579,6 +641,7 @@ l'utilisateur : profil, entrées d'audit, actions.
 - Les entrées d'audit conservent `userId` mais perdent `userEmail`
 
 **Acceptation.**
+
 - L'export contient toutes les données personnelles
 - L'anonymisation ne casse aucune intégrité référentielle
 - Le journal d'audit reste exploitable après anonymisation
@@ -600,8 +663,7 @@ purgée physiquement après vérification (pas une donnée métier réelle).
 
 **Écart documenté vs. l'énoncé.** « Les entrées d'audit conservent
 `userId` mais perdent `userEmail` » n'est **pas** implémenté à la lettre :
-`audit_logs` est rendu immuable au niveau base (`FORCE ROW LEVEL
-SECURITY` + trigger `reject_audit_mutation` qui rejette tout UPDATE/DELETE,
+`audit_logs` est rendu immuable au niveau base (`FORCE ROW LEVEL SECURITY` + trigger `reject_audit_mutation` qui rejette tout UPDATE/DELETE,
 cf. `prisma/rls.sql`), donc aucune entrée passée n'est modifiable — même
 via `asSystem()`, qui contourne le RLS mais pas les triggers. C'est
 cohérent avec CLAUDE.md §5 (« le journal d'audit ne doit jamais être
@@ -621,6 +683,7 @@ une conséquence silencieuse d'un effacement RGPD.
 **Fichiers.** `scripts/retention-purge.ts` (nouveau)
 
 **Durées (conformité §4.2).**
+
 - Données financières : 10 ans
 - Contrats : 10 ans après expiration
 - Documents techniques : durée de vie de l'actif
@@ -628,6 +691,7 @@ une conséquence silencieuse d'un effacement RGPD.
 - Utilisateurs supprimés : anonymisation après 30 jours
 
 **Acceptation.**
+
 - Le script tourne à blanc (`--dry-run`) par défaut
 - Rapport de ce qui serait purgé
 - Le journal d'audit n'est jamais touché
@@ -672,6 +736,7 @@ passent.
 ### [x] T5.1 — Tests automatisés
 
 **Priorité de couverture :**
+
 1. `lib/valuation.ts` — cas limites : avion très ancien, heures nulles,
    type inconnu
 2. `lib/alerts.ts` — chaque règle, et l'idempotence
@@ -703,8 +768,7 @@ seuil. Détail :
   (0 créée, 0 résolue) ; résolution automatique vérifiée en levant la
   condition d'une alerte (paiement marqué reçu) sans toucher aux autres.
 - **T5.1.3 (isolation tenant, priorité 3)** — intégrée à `npm test` via
-  `tenant-isolation.integration.test.ts`, qui lance `npm run
-  test:isolation` en sous-processus plutôt que de dupliquer sa logique en
+  `tenant-isolation.integration.test.ts`, qui lance `npm run test:isolation` en sous-processus plutôt que de dupliquer sa logique en
   assertions vitest : ce script reste la seule source de vérité du test
   de sécurité le plus important du projet, jamais réécrit en parallèle.
 - **T5.1.4 (import CSV, priorité 4)** — 98.9 % lignes : formats de date
@@ -744,6 +808,7 @@ se produit en pratique que si connexion et changement de mot de passe
 tombent dans la même seconde.
 
 **Hors périmètre (documenté, pas caché) :**
+
 - `src/lib/ai/**` et `src/lib/storage/s3.ts` — exclus du calcul de
   couverture (`vitest.config.ts`) : nécessitent respectivement
   `ANTHROPIC_API_KEY` (cf. notes T3.1/T3.2) et des identifiants AWS,
@@ -796,14 +861,12 @@ BYPASSRLS — cf. `.env.example` §Base de données) que Prisma ne gère pas ;
 un service Postgres GitHub Actions ne crée que le rôle `POSTGRES_USER`.
 La CI recrée donc `aeroos_app`/`aeroos_system` avec les mêmes `GRANT`
 que `.env.example` documente pour le dev local, dans le même ordre que
-la doc l'exige (rôles → migrations en superuser → `GRANT ... ON ALL
-TABLES` une fois les tables créées → RLS).
+la doc l'exige (rôles → migrations en superuser → `GRANT ... ON ALL TABLES` une fois les tables créées → RLS).
 
 **Vérifié réellement, pas seulement relu :** toute la séquence a été
 rejouée en local contre un conteneur Postgres 16 jetable dédié (port
 différent de la base de dev, jamais touchée) — création des deux rôles,
-`prisma migrate deploy` (7 migrations, base vide), `GRANT`, `psql -f
-prisma/rls.sql` (RLS activé + forcé sur les 12 tables tenant-scopées,
+`prisma migrate deploy` (7 migrations, base vide), `GRANT`, `psql -f prisma/rls.sql` (RLS activé + forcé sur les 12 tables tenant-scopées,
 `sanctioned_entities` exclue comme prévu), puis `npm run typecheck`,
 `npm run lint`, `npm test` (151/151) et `npm run build` avec les
 identifiants applicatifs (non-superuser) pointant vers cette base
@@ -836,11 +899,9 @@ push.
   risque théorique) : `asSystem()` journalisait sa raison telle quelle
   (`console.warn`), et `src/lib/auth.ts` interpolait l'e-mail normalisé
   dans cette raison à deux endroits de `login()` — observé en clair dans
-  la sortie de test (`[SYSTEM ACCESS] login: recherche de l'utilisateur
-  qa-auth@example.invalid…`) avant correction. Les deux messages ne
+  la sortie de test (`[SYSTEM ACCESS] login: recherche de l'utilisateur qa-auth@example.invalid…`) avant correction. Les deux messages ne
   portent plus que du texte générique. `src/lib/db.ts` : `console.warn`
-  → `logger.warn()` dans `asSystem()` ; le `console.error('[AUDIT
-  FAILURE]', err, entry)` de `audit()` (qui journalisait `entry` en
+  → `logger.warn()` dans `asSystem()` ; le `console.error('[AUDIT FAILURE]', err, entry)` de `audit()` (qui journalisait `entry` en
   entier, donc `userEmail` inclus) remplacé par `captureException()`
   avec un sous-ensemble explicite de champs sûrs
   (`tenantId`/`userId`/`action`/`resourceType`/`resourceId`).
@@ -872,8 +933,7 @@ push.
 
 `npm run typecheck`, `npm test` (158/158, incluant `logger.test.ts` —
 vérifie la censure réelle des champs sensibles via une instance pino
-dédiée écrivant en mémoire — et `error-tracking.test.ts`), `npm run
-lint` et `npm run build` passent.
+dédiée écrivant en mémoire — et `error-tracking.test.ts`), `npm run lint` et `npm run build` passent.
 
 ---
 
@@ -883,6 +943,7 @@ lint` et `npm run build` passent.
 simple que Vercel + base séparée pour ce type d'application.
 
 **Points de vigilance.**
+
 - `AUTH_SECRET` différent de celui de développement
 - `npm run db:rls` doit être exécuté après chaque migration en production
 - Sauvegardes automatiques activées et **restauration testée**
@@ -902,8 +963,7 @@ trouvés en revue et un corrigé.** L'utilisateur confirme le déploiement
 Railway effectué. Revue des points de vigilance restants :
 
 - **Corrigé et vérifié en conditions réelles.** `npm run db:rls`
-  appelait `psql` directement (`"db:rls": "psql \"$DATABASE_URL\" -f
-  prisma/rls.sql"`) — binaire non garanti présent dans l'image de build
+  appelait `psql` directement (`"db:rls": "psql \"$DATABASE_URL\" -f prisma/rls.sql"`) — binaire non garanti présent dans l'image de build
   Railway (runtime Node seul, pas d'outillage Postgres). Remplacé par
   `scripts/apply-rls.ts` (`tsx` + `pg`, protocole simple qui accepte le
   script multi-instructions tel quel, contrairement au protocole étendu
@@ -925,26 +985,141 @@ Railway effectué. Revue des points de vigilance restants :
   silencieusement contourné. Point 6 (sauvegarde + restauration testée)
   toujours pas fait.
 
+**Note (2026-09-02, session de vérification distincte de celle ci-dessus)
+— test en conditions réelles contre le déploiement Railway live, pas
+seulement relu.** L'utilisateur a fourni l'URL publique de l'app
+(`areoos-production.up.railway.app`) et la chaîne de connexion externe du
+Postgres managé pour un test ciblé. Trois vérifications faites depuis cet
+environnement, aucune écriture :
+
+- **`GET /api/health` → `200 {"status":"ok","database":"up"}`** (point 5
+  du runbook). `GET /` → `307` vers `/login?from=%2F` (garde de session
+  normale, cohérent avec `src/middleware.ts`). `GET /login` → `200`.
+- **Le point resté ouvert dans la note précédente est résolu : l'app tourne
+  bien avec le rôle applicatif `aeroos_app`, pas le superuser.** Requête
+  sur `pg_stat_activity` : une seule connexion active sous `aeroos_app`
+  (`client_addr` interne Railway), en plus de la connexion `postgres` de
+  ce test lui-même — donc le service applicatif a bien été redéployé avec
+  les bonnes variables (`DATABASE_URL` = rôle `aeroos_app`), pas resté sur
+  `ADMIN_DATABASE_URL` comme la note du 2026-09-02 précédente le
+  craignait. `pg_roles` confirme aussi l'existence de `aeroos_app`
+  (NOSUPERUSER, NOBYPASSRLS) et `aeroos_system` (NOSUPERUSER, BYPASSRLS).
+- **RLS actif et forcé sur les 16 tables tenant-scopées attendues**
+  (`relrowsecurity`/`relforcerowsecurity` = true), `sanctioned_entities`
+  et `_prisma_migrations` correctement exclues — identique à l'attendu de
+  T5.2/T5.4, maintenant vérifié sur la base de production elle-même et
+  pas seulement sur un Postgres jetable local.
+- Note technique : la base gérée tourne en **Postgres 18.6** (Railway),
+  pas la version 16 utilisée en dev/CI (`docker-compose.yml`,
+  `postgres:16-alpine`) — à garder en tête si un comportement diverge un
+  jour entre local et prod ; rien d'observé pour l'instant.
+
+**Volontairement non testé dans cette session, à ne pas confondre avec du
+« vérifié » :**
+
+- `npm run test:isolation` n'a **pas** été lancé contre cette base de
+  production — ce script crée et supprime des tenants de test via
+  `ADMIN_DATABASE_URL` ; l'exécuter contre des données clients réelles
+  sans accord explicite est le genre d'action à ne pas prendre sans
+  demander d'abord, même si le script est conçu pour nettoyer derrière
+  lui (déjà validé en local/CI, cf. note T5.2). Si une vérification
+  end-to-end de l'isolation *sur cette base précise* est voulue, il
+  faudra le demander explicitement, idéalement avec une fenêtre de
+  maintenance.
+- Point 6 du runbook (sauvegarde + restauration testée) : toujours pas
+  fait, et pas vérifiable depuis cet environnement (nécessite le
+  dashboard Railway, hors accès ici).
+
+
+
+- **Suite de la même session — deux actions supplémentaires demandées
+  explicitement par l'utilisateur, base confirmée vide de toute donnée
+  réelle avant d'agir :**
+- **`npm run test:isolation` réel, lancé pour de vrai contre cette base
+  de production**, pas seulement raisonné par lecture de code — 14/14
+  tests réussis (lecture croisée, accès direct par ID, modification/
+  suppression/injection cross-tenant toutes bloquées, aucune ligne
+  visible sans `app.current_tenant`, audit log immuable). Obstacle
+  pratique : le mot de passe du rôle `aeroos_app` n'a jamais été
+  communiqué à cette session (il n'a été affiché qu'une fois, à la
+  création du rôle — cf. note précédente), donc impossible de lancer le
+  script `scripts/test-tenant-isolation.ts` tel quel (il a besoin de
+  `DATABASE_URL` = rôle applicatif). Contournement : un script ad hoc,
+  connecté avec le superuser fourni, fait `SET ROLE aeroos_app` avant
+  chaque requête testée — un superuser peut prendre l'identité d'un
+  autre rôle sans en connaître le mot de passe, et perd alors tous ses
+  privilèges superuser/BYPASSRLS pour la durée de la session (comportement
+  Postgres documenté, pas un contournement du test). Le test 8 (contexte
+  tenant invalide) n'a pas d'équivalent SQL brut : c'est une validation
+  côté application dans `withTenant()`, déjà couverte par les tests
+  unitaires vitest (T5.1), pas une politique RLS.
+  **Effet de bord permanent et volontaire :** l'exécution insère une ligne
+  `audit_logs` (`userEmail: test@test.com`) qui ne peut ensuite être ni
+  modifiée ni supprimée — même par le superuser — puisque `audit_logs` est
+  append-only par construction (trigger `reject_audit_mutation`, aucune
+  policy RLS UPDATE/DELETE). C'est exactement le comportement voulu, pas
+  un oubli de nettoyage ; `scripts/test-tenant-isolation.ts` fait déjà la
+  même chose en dev/CI (son `cleanup()` avale l'échec de suppression de
+  l'audit log). Deux lignes de ce type existent maintenant dans
+  `audit_logs` en production : une de cette vérification, et une autre,
+  antérieure de ~1h30 à ce test (même signature `test@test.com`), dont
+  l'origine est inconnue de cette session — tenant et avion associés
+  déjà absents, donc déjà nettoyés par qui que ce soit qui l'a lancé (cf.
+  [[project-aeroos-concurrent-git-activity]] en mémoire : quelque chose
+  d'autre agit parfois sur ce repo/cette infra en parallèle). À
+  mentionner à l'utilisateur, pas juste noté ici.
+- **Compte de démonstration inséré** (tenant « Meridian Aviation Capital »
+
+  + utilisateur `admin@meridian-aviation.com` / `demo1234`, rôle ADMIN,
+    MFA désactivé) — mêmes valeurs que `prisma/seed.ts`, mais seulement le
+    tenant et cet utilisateur, pas toute la flotte de démo (portefeuille,
+    avions, contrats… non créés — à faire séparément si voulu).
+- **Bug bloquant trouvé en testant le login réel avec ce compte, pas
+  supposé.** `POST /api/auth/login` avec des identifiants valides répond
+  `500` (corps vide, comportement Next.js normal en prod qui masque la
+  stack trace) — confirmé que ce n'est pas un problème de validation de
+  requête (un e-mail malformé renvoie bien `400` proprement, donc la
+  route elle-même fonctionne). Cause quasi certaine, déduite du code
+  (pas vue dans des logs Railway, inaccessibles depuis ici) :
+  `login()` (`src/lib/auth.ts`) appelle `asSystem()` dès la première étape
+  (recherche de l'utilisateur par e-mail, avant de connaître son tenant —
+  c'est l'exception documentée dans CLAUDE.md §1), et `asSystem()`
+  (`src/lib/db.ts`) lève une exception si
+  `NODE_ENV==='production' && !ALLOW_SYSTEM_ACCESS`. Le runbook de
+  déploiement (point 3 ci-dessus) ne liste **jamais** `ALLOW_SYSTEM_ACCESS`
+  parmi les variables à renseigner sur Railway, et `.env.example` ne le
+  mentionne pas non plus. Si cette variable n'a pas été positionnée sur
+  le service Railway, **toute tentative de connexion échoue à 100 %**,
+  identifiants corrects ou non — cohérent avec l'échec observé dès le
+  premier essai. **Pas corrigé depuis cette session** : c'est un réglage
+  de secret Railway, hors de portée d'ici, et CLAUDE.md est explicite sur
+  le fait de ne pas contourner ce genre de garde-fou "temporairement pour
+  déboguer". Action attendue : ajouter `ALLOW_SYSTEM_ACCESS=true` aux
+  variables du service applicatif sur Railway et redéployer, puis
+  reconfirmer `POST /api/auth/login` avec ce compte. **T5.4 ne peut pas
+  être cochée tant que le login réel n'aura pas été revérifié après ce
+  correctif.**
+
 **Ce qui est déjà vérifié et prêt (aucune action supplémentaire requise) :**
+
 - `npm run build` produit un build de production propre (revérifié à
   chaque phase de cette session).
 - `/api/health` (T5.3) répond 200 base up / 503 base down — exploitable
   tel quel comme healthcheck par Railway/Fly.io.
 - `.github/workflows/ci.yml` (T5.2) prouve déjà, à chaque push, que
-  `npm ci && prisma generate && migrate deploy && db:rls && typecheck
-  && lint && test && build` réussit contre un Postgres neuf — c'est
+  `npm ci && prisma generate && migrate deploy && db:rls && typecheck && lint && test && build` réussit contre un Postgres neuf — c'est
   exactement la séquence de mise en prod ci-dessous, déjà rejouée avec
   succès (cf. note T5.2).
 
 **Runbook à suivre (Railway, recommandation retenue) :**
+
 1. Créer le projet Railway, ajouter un service Postgres 16 managé.
 2. Créer les rôles applicatifs sur cette base managée — `aeroos_app`
    NOSUPERUSER NOBYPASSRLS, `aeroos_system` NOSUPERUSER BYPASSRLS, avec
    des mots de passe de production générés (pas ceux de dev/CI). Utiliser
    `scripts/create-app-roles.ts` plutôt que taper le SQL à la main
    (idempotent, testé de bout en bout le 2026-09-02) :
-   `ADMIN_DATABASE_URL="<external connection string Railway, onglet
-   Variables du service Postgres>" npx tsx scripts/create-app-roles.ts`
+   `ADMIN_DATABASE_URL="<external connection string Railway, onglet Variables du service Postgres>" npx tsx scripts/create-app-roles.ts`
    — copier immédiatement les deux URLs affichées dans le gestionnaire
    de secrets Railway (étape 3), le mot de passe n'est montré qu'une
    fois.
@@ -952,15 +1127,12 @@ Railway effectué. Revue des points de vigilance restants :
    repo) : `DATABASE_URL` (rôle `aeroos_app`), `ADMIN_DATABASE_URL`
    (rôle superuser managé, pour les migrations/RLS uniquement — pas
    utilisé au runtime applicatif), `SYSTEM_DATABASE_URL` (rôle
-   `aeroos_system`), `AUTH_SECRET` (**nouveau**, `openssl rand -base64
-   32` — jamais celui de dev), `NODE_ENV=production`, et selon les
+   `aeroos_system`), `AUTH_SECRET` (**nouveau**, `openssl rand -base64 32` — jamais celui de dev), `NODE_ENV=production`, et selon les
    fonctionnalités activées : `ANTHROPIC_API_KEY`, `STORAGE_DRIVER=s3` +
    `S3_BUCKET`/`S3_REGION` + les identifiants AWS du driver
    (`src/lib/storage/s3.ts` — le driver local n'est pas fait pour la
    prod, cf. T2.5), `SENTRY_DSN`, `LOG_LEVEL=info`.
-4. Déploiement initial : `DATABASE_URL=<ADMIN_DATABASE_URL> npx prisma
-   migrate deploy`, puis `DATABASE_URL=<ADMIN_DATABASE_URL> npm run
-   db:rls` (rôle superuser — les politiques RLS ne sont pas gérées par
+4. Déploiement initial : `DATABASE_URL=<ADMIN_DATABASE_URL> npx prisma migrate deploy`, puis `DATABASE_URL=<ADMIN_DATABASE_URL> npm run db:rls` (rôle superuser — les politiques RLS ne sont pas gérées par
    Prisma, cf. CLAUDE.md). `db:rls` exécute `scripts/apply-rls.ts` via
    `pg`, plus besoin de `psql` — le binaire n'est pas garanti présent sur
    l'image Railway (corrigé le 2026-09-02, cf. note ci-dessus). Puis
@@ -1013,6 +1185,7 @@ dashboard. Aucun canal sortant n'existe.
 démarrage : la délivrabilité initiale y est capricieuse.
 
 **Fichiers.**
+
 - `src/lib/email/send.ts` (nouveau) — abstraction fournisseur, même
   approche que `src/lib/storage.ts` (T2.5) : driver console en
   développement, driver réel en production, sélection par variable
@@ -1024,6 +1197,7 @@ réinitialisation de mot de passe · résumé quotidien des alertes · alerte
 critique immédiate.
 
 **Règles.**
+
 - En développement et en test, écrire dans un fichier ou la console —
   jamais d'envoi réel (même logique que le driver storage local)
 - Ne jamais mettre de donnée contractuelle sensible dans le corps du
@@ -1035,6 +1209,7 @@ critique immédiate.
   client filtre tout au bout d'une semaine
 
 **Acceptation.**
+
 - Les alertes critiques déclenchent un e-mail
 - Le résumé quotidien groupe les alertes non critiques
 - Aucun envoi réel en développement ni en test
@@ -1056,6 +1231,7 @@ administrateur** : créer un client en trois minutes après signature, sans
 toucher à la base.
 
 **Fichiers.**
+
 - `src/app/(admin)/tenants/page.tsx` (nouveau) — console interne
 - `src/app/(admin)/tenants/new/page.tsx` (nouveau)
 - `src/lib/actions/tenant.ts` (nouveau)
@@ -1075,6 +1251,7 @@ générique uniquement, et détails dans l'audit, pas dans le log.
 strictement qu'un accès client.
 
 **Le formulaire crée.**
+
 1. Le `Tenant` (nom, plan, devise, région de stockage, quotas)
 2. Le premier `User` en rôle `ADMIN`
 3. Un `Portfolio` par défaut
@@ -1082,6 +1259,7 @@ strictement qu'un accès client.
    T6.3, et doit respecter la politique de mot de passe de T1.3)
 
 **Acceptation.**
+
 - Créer un client complet en moins de 3 minutes sans toucher à la base
 - La région de stockage est immuable après création (conformité D2)
 - Les quotas du plan sont enregistrés (`maxAssets`, `maxUsers`)
@@ -1104,6 +1282,7 @@ Le modèle a déjà les quatre rôles (`ADMIN`, `MANAGER`, `ANALYST`,
 d'un autre client. Il manque le mécanisme d'invitation.
 
 **Fichiers.**
+
 - `src/app/(app)/settings/users/page.tsx` (nouveau)
 - `src/app/(auth)/accept-invite/[token]/page.tsx` (nouveau)
 - `src/lib/actions/invite.ts` (nouveau)
@@ -1114,6 +1293,7 @@ Stocker le hash du token, jamais le token en clair — même principe que
 les codes de récupération MFA de T1.1.
 
 **Règles.**
+
 - Seul un `ADMIN` du tenant peut inviter
 - Quota `maxUsers` vérifié avant l'envoi
 - Token à usage unique, expirant
@@ -1123,6 +1303,7 @@ les codes de récupération MFA de T1.1.
   sinon l'entreprise devient ingérable et doit vous appeler
 
 **Acceptation.**
+
 - Cycle complet : invitation → e-mail → définition du mot de passe →
   connexion avec le bon rôle
 - Un token expiré ou réutilisé est refusé
@@ -1144,10 +1325,12 @@ formulaires actif et contrat (T2.1, T2.2), upload de documents (T2.5). Il
 manque le fil conducteur.
 
 **Fichiers.**
+
 - `src/app/(app)/onboarding/page.tsx` (nouveau)
 - `src/lib/onboarding.ts` (nouveau) — calcul de l'état d'avancement
 
 **Parcours en 5 étapes.**
+
 1. Créer le portefeuille (nom, devise)
 2. Importer les actifs (réutilise T2.4)
 3. Ajouter les contreparties — déclenche le screening sanctions de T4.1
@@ -1155,12 +1338,14 @@ manque le fil conducteur.
 5. Vérifier le dashboard
 
 **Principes.**
+
 - Barre de progression persistante tant que l'onboarding n'est pas fini
 - Chaque étape peut être sautée puis reprise
 - Données d'exemple téléchargeables au bon format à chaque étape
 - L'étape 2 doit fonctionner avec un vrai fichier Excel sale
 
 **Acceptation.**
+
 - Un utilisateur qui n'a jamais vu la plateforme importe 20 actifs et
   5 contrats en moins de 30 minutes, chronométré
 - L'état d'avancement survit à une déconnexion
@@ -1181,6 +1366,7 @@ Construire Stripe quand il y aura huit clients — c'est du temps volé au
 produit avant.
 
 **Ce qu'il faut maintenant.**
+
 - `maxAssets` bloque réellement la création au-delà du quota, avec un
   message d'upgrade explicite — pas une erreur technique
 - `maxUsers` idem sur les invitations (T6.2)
@@ -1188,6 +1374,7 @@ produit avant.
 - Un `SUPERADMIN` peut changer le plan d'un tenant (audité)
 
 **Acceptation.**
+
 - Dépasser le quota affiche un message clair et actionnable
 - L'écran Abonnement est exact
 - Le changement de plan est audité
@@ -1201,6 +1388,7 @@ produit avant.
 d'erreurs via `error-tracking.ts`.
 
 **Ce qui reste.**
+
 - Sonde externe interrogeant `/api/health` toutes les minutes
   (UptimeRobot, Better Stack — gratuit à ce volume). C'est le point
   essentiel : aujourd'hui, si l'application tombe la nuit, personne ne le
@@ -1216,6 +1404,7 @@ confinement < 4 h · notification client < 72 h · post-mortem sous
 5 jours. **Écrire le runbook avant le premier incident, pas pendant.**
 
 **Acceptation.**
+
 - Une coupure simulée déclenche une alerte en moins de 3 minutes
 - La page de statut reflète l'état réel
 - Le runbook existe et a été relu
@@ -1231,6 +1420,7 @@ confinement < 4 h · notification client < 72 h · post-mortem sous
 contractuels. Une sauvegarde jamais restaurée n'est pas une sauvegarde.
 
 **À faire.**
+
 - Sauvegardes automatiques du Postgres managé, rétention 30 jours
 - **Restauration testée**, en vérifiant que `npm run test:isolation`
   passe contre la base restaurée : ce qui compte n'est pas seulement la
@@ -1245,6 +1435,7 @@ d'export de T4.2 existe pour un utilisateur ; l'étendre à un tenant
 entier (actifs, contrats, documents, valorisations).
 
 **Acceptation.**
+
 - Une restauration complète a été réalisée au moins une fois, chronométrée
 - Le temps mesuré est inférieur au RTO annoncé
 - `test:isolation` passe sur la base restaurée
@@ -1258,6 +1449,7 @@ entier (actifs, contrats, documents, valorisations).
 elles arrivent par SMS à 22 h et se perdent.
 
 **Minimum viable.**
+
 - Adresse `support@` avec engagement de réponse sous 24 h ouvrées
 - Guide de démarrage : 5 pages, captures d'écran, pas plus
 - FAQ alimentée par les vraies questions des pilotes
@@ -1268,6 +1460,7 @@ ticketing, pas de base de connaissance élaborée. À trois clients, l'e-mail
 suffit et vous apprend davantage.
 
 **Acceptation.**
+
 - Le guide permet à un utilisateur de démarrer sans vous appeler
 - Chaque question de pilote devient une entrée FAQ ou un ticket produit
 
@@ -1284,12 +1477,14 @@ une migration signifie l'appliquer directement sur les données d'un vrai
 client. Inacceptable.
 
 **Trois environnements.**
+
 - **Développement** — local, données de seed
 - **Recette** — copie de production, **données anonymisées**, pour tester
   les migrations avant application
 - **Production** — données clients réelles
 
 **Règles.**
+
 - Aucune donnée client réelle hors production
 - Toute migration passe par la recette
 - Secrets distincts par environnement, `AUTH_SECRET` différent partout
@@ -1302,6 +1497,7 @@ conservés (ils ne sont pas des données personnelles et leur réalisme
 compte pour tester).
 
 **Acceptation.**
+
 - Les trois environnements existent et sont isolés
 - Le script d'anonymisation fonctionne
 - Aucun accès direct à la base de production depuis un poste de
@@ -1327,11 +1523,13 @@ justifie que pour un besoin hors ligne ou un accès au matériel — ni l'un
 ni l'autre ne concerne AeroOS.
 
 **Fichiers.**
+
 - `public/manifest.json` (nouveau)
 - `public/icons/` — 192×192, 512×512, maskable
 - `src/app/layout.tsx` — lier le manifeste
 
 **Manifeste.**
+
 ```json
 {
   "name": "AeroOS — Asset Management",
@@ -1351,6 +1549,7 @@ contractuelles pose une question de conformité (§1). Se limiter aux
 ressources statiques, et afficher un message clair sans connexion.
 
 **Acceptation.**
+
 - Chrome et Edge proposent « Installer » sur desktop
 - L'application installée s'ouvre en fenêtre autonome
 - L'icône s'affiche correctement sur Windows et macOS
@@ -1369,6 +1568,7 @@ sortie structuré (JSON Schema brut, le helper `zodOutputFormat` du SDK
 exigeant zod v4 alors que le projet est en zod v3).
 
 **À faire.**
+
 1. Configurer une clé réelle en développement
 2. Tester sur **10 contrats de formats différents** — pas un seul PDF
    propre. Inclure au moins un scan de mauvaise qualité et un contrat
@@ -1382,6 +1582,7 @@ exigeant zod v4 alors que le projet est en zod v3).
    page, ou retirer l'affichage plutôt que d'afficher une référence fausse
 
 **Acceptation.**
+
 - Taux d'erreur mesuré et documenté sur 10 contrats variés
 - Aucune écriture en base sans validation humaine (revérifié en réel)
 - Les corrections utilisateur sont bien stockées dans
@@ -1406,13 +1607,13 @@ exigeant zod v4 alors que le projet est en zod v3).
 
 ---
 
-
 ### Note — option IA auto-hébergée (Enterprise)
 
 **Décision prise :** l'IA passe par une API externe. Documenté ici pour
 que le débat ne se rouvre pas à chaque session.
 
 **Pourquoi l'API plutôt qu'un modèle local.**
+
 - *Qualité.* Extraire 18 champs d'un contrat de 60 pages avec un score de
   confiance par champ est une tâche de raisonnement difficile. Un modèle
   léger auto-hébergé (7B–13B) confond dates de signature et de livraison,
@@ -1431,6 +1632,7 @@ que le débat ne se rouvre pas à chaque session.
   l'hébergement local.
 
 **Mesures d'atténuation — déjà en place ou à confirmer en T6.11.**
+
 - OCR exécuté localement (`pdf-parse`) : extraire le texte ne demande
   aucun raisonnement et évite d'envoyer le document brut
 - N'envoyer que les sections pertinentes, pas le contrat entier
